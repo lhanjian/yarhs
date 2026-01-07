@@ -1,0 +1,169 @@
+use std::convert::Infallible;
+use std::sync::Arc;
+use http_body_util::Full;
+use hyper::body::Bytes;
+use hyper::{Request, Response};
+use crate::config::{AppState, RouteHandler};
+use crate::logger;
+use crate::response;
+use crate::api;
+
+pub async fn handle_request(
+    req: Request<hyper::body::Incoming>,
+    state: Arc<AppState>,
+) -> Result<Response<Full<Bytes>>, Infallible> {
+    let method = req.method();
+    let uri = req.uri();
+    let version = req.version();
+    let path = uri.path();
+    
+    // Use cached access_log flag to avoid lock
+    let access_log = state.cached_access_log.load(std::sync::atomic::Ordering::Relaxed);
+    
+    if access_log {
+        logger::log_request(method, uri, version);
+    }
+    
+    // Read lightweight logging config only (avoid cloning heavy http_config)
+    let show_headers = {
+        let config = state.dynamic_config.read().await;
+        config.logging.show_headers
+    };
+    
+    logger::log_headers_count(req.headers().len(), show_headers);
+    
+    // Check request body size limit
+    let max_body_size = state.config.resources.max_body_size;
+    if let Some(content_length) = req.headers().get("content-length") {
+        if let Ok(size_str) = content_length.to_str() {
+            if let Ok(size) = size_str.parse::<u64>() {
+                if size > max_body_size {
+                    eprintln!("[ERROR] Request body too large: {} bytes (max: {})", size, max_body_size);
+                    return Ok(response::build_413_response());
+                }
+            }
+        }
+    }
+    
+    // Get routes configuration
+    let routes = {
+        let config = state.dynamic_config.read().await;
+        config.routes.clone()
+    };
+    
+    // Route handling with dynamic configuration
+    let response = 
+        // 1. API routes (always checked first)
+        if path.starts_with(&routes.api_prefix) {
+            return api::handle_api_config(req, state).await;
+        }
+        // 2. Favicon routes
+        else if routes.favicon_paths.iter().any(|p| path == p) {
+            if let Some(favicon_data) = response::load_favicon().await {
+                let size = favicon_data.len();
+                if access_log {
+                    logger::log_response(size);
+                }
+                response::build_favicon_response(favicon_data)
+            } else {
+                response::build_404_response()
+            }
+        }
+        // 3. Custom routes (exact match first)
+        else if let Some(handler) = routes.custom_routes.get(path) {
+            handle_custom_route(path, handler, &state, access_log).await
+        }
+        // 4. Static file routes (prefix match)
+        else if path.starts_with(&routes.static_prefix) {
+            if let Some(ref static_dir) = state.config.resources.static_dir {
+                if let Some((content, content_type)) = response::load_static_file(static_dir, path).await {
+                    let size = content.len();
+                    if access_log {
+                        logger::log_response(size);
+                    }
+                    response::build_static_file_response(content, content_type)
+                } else {
+                    response::build_404_response()
+                }
+            } else {
+                response::build_404_response()
+            }
+        }
+        // 5. Default: Markdown homepage
+        else {
+            let http_config = {
+                let config = state.dynamic_config.read().await;
+                config.http.clone()
+            };
+            
+            let html = response::load_and_render_markdown(&state).await;
+            let html_len = html.len();
+            let resp = response::build_html_response(html, &http_config);
+            
+            if access_log {
+                logger::log_response(html_len);
+            }
+            resp
+        };
+    
+    Ok(response)
+}
+
+async fn handle_custom_route(
+    path: &str,
+    handler: &RouteHandler,
+    state: &Arc<AppState>,
+    access_log: bool,
+) -> Response<Full<Bytes>> {
+    match handler {
+        RouteHandler::Static { dir } => {
+            // Serve file from custom static directory
+            if let Some((content, content_type)) = response::load_static_file(dir, path).await {
+                let size = content.len();
+                if access_log {
+                    logger::log_response(size);
+                }
+                response::build_static_file_response(content, content_type)
+            } else {
+                response::build_404_response()
+            }
+        }
+        RouteHandler::Template { file } => {
+            // Load and serve HTML template
+            if let Ok(content) = tokio::fs::read_to_string(file).await {
+                let http_config = {
+                    let config = state.dynamic_config.read().await;
+                    config.http.clone()
+                };
+                let size = content.len();
+                if access_log {
+                    logger::log_response(size);
+                }
+                response::build_html_response(content, &http_config)
+            } else {
+                response::build_404_response()
+            }
+        }
+        RouteHandler::Markdown { file } => {
+            // Load and render Markdown file
+            if let Ok(md_content) = tokio::fs::read_to_string(file).await {
+                let http_config = {
+                    let config = state.dynamic_config.read().await;
+                    config.http.clone()
+                };
+                let html = response::render_markdown(&md_content);
+                let size = html.len();
+                if access_log {
+                    logger::log_response(size);
+                }
+                response::build_html_response(html, &http_config)
+            } else {
+                response::build_404_response()
+            }
+        }
+        RouteHandler::Redirect { target } => {
+            // Build redirect response
+            response::build_redirect_response(target)
+        }
+    }
+}

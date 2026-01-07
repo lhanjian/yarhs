@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Async Rust Web Server</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 50px auto; 
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        h1 { margin-top: 0; }
+        .status { color: #4ade80; font-size: 1.2em; }
+        .info { margin-top: 20px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Async Rust Web Server</h1>
+        <p class="status">✓ Server is running with Tokio async runtime</p>
+        <div class="info">
+            <p><strong>Framework:</strong> Tokio + Hyper</p>
+            <p><strong>Concurrency Model:</strong> Asynchronous, non-blocking I/O</p>
+            <p><strong>Performance:</strong> High-throughput, low-latency</p>
+        </div>
+    </div>
+</body>
+</html>

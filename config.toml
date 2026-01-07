@@ -1,0 +1,35 @@
+[server]
+host = "127.0.0.1"
+port = 8080
+
+[logging]
+level = "debug"
+access_log = false
+show_headers = false
+
+[resources]
+template_dir = "templates"
+max_body_size = 10485760
+
+[performance]
+keep_alive_timeout = 75
+read_timeout = 30
+write_timeout = 30
+max_connections = 5000
+
+[http]
+server_name = "Tokio-Hyper/1.0"
+default_content_type = "text/html; charset=utf-8"
+enable_cors = true
+
+[routes]
+api_prefix = "/api"
+static_prefix = "/static"
+favicon_paths = ["/favicon.ico", "/favicon.svg"]
+
+# 自定义路由示例（可选）
+# [routes.custom_routes]
+# "/docs" = { type = "markdown", file = "docs/README.md" }
+# "/about" = { type = "template", file = "templates/about.html" }
+# "/old-path" = { type = "redirect", target = "/new-path" }
+# "/files" = { type = "static", dir = "uploads" }
