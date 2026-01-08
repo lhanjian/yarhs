@@ -19,7 +19,23 @@ pub fn log_connection_accepted(peer_addr: &SocketAddr) {
 }
 
 pub fn log_connection_error(err: &impl std::fmt::Debug) {
-    eprintln!("[Error] Failed to serve connection: {:?}", err);
+    eprintln!("[ERROR] Failed to serve connection: {:?}", err);
+}
+
+pub fn log_error(message: &str) {
+    eprintln!("[ERROR] {}", message);
+}
+
+pub fn log_api_error(message: &str) {
+    eprintln!("[API ERROR] {}", message);
+}
+
+pub fn log_old_listener_error(message: &str) {
+    eprintln!("[OLD] {}", message);
+}
+
+pub fn log_warning(message: &str) {
+    eprintln!("[WARN] {}", message);
 }
 
 pub fn log_request(method: &Method, uri: &Uri, version: Version) {
@@ -57,7 +73,7 @@ pub fn log_new_listener_bound(addr: &std::net::SocketAddr) {
 }
 
 pub fn log_bind_failed(addr: &std::net::SocketAddr, err: &std::io::Error) {
-    eprintln!("[Step 1] ✗ Failed to bind {}: {}", addr, err);
+    log_error(&format!("[Step 1] ✗ Failed to bind {}: {}", addr, err));
     eprintln!("         Continuing with current configuration");
 }
 

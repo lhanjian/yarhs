@@ -37,7 +37,7 @@ pub async fn handle_request(
         if let Ok(size_str) = content_length.to_str() {
             if let Ok(size) = size_str.parse::<u64>() {
                 if size > max_body_size {
-                    eprintln!("[ERROR] Request body too large: {} bytes (max: {})", size, max_body_size);
+                    logger::log_error(&format!("Request body too large: {} bytes (max: {})", size, max_body_size));
                     return Ok(response::build_413_response());
                 }
             }

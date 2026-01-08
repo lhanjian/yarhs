@@ -78,7 +78,7 @@ async fn run_dual_servers(
     // Spawn API server task
     tokio::task::spawn_local(async move {
         if let Err(e) = run_api_server(api_listener, state_clone, api_connections_clone).await {
-            eprintln!("[API ERROR] API server error: {}", e);
+            logger::log_api_error(&format!("API server error: {}", e));
         }
     });
     
@@ -162,9 +162,11 @@ where
                         );
                     }
                     Err(e) => {
-                        eprintln!("[{}ERROR] Failed to accept connection: {}", 
-                            config.log_prefix,
-                                 e);
+                        if config.is_api_server {
+                            logger::log_api_error(&format!("Failed to accept connection: {}", e));
+                        } else {
+                            logger::log_error(&format!("Failed to accept connection: {}", e));
+                        }
                     }
                 }
             }
@@ -181,7 +183,7 @@ where
                     match config.as_ref() {
                         Some(c) => c.clone(),
                         None => {
-                            eprintln!("[ERROR] No new config available for restart");
+                            logger::log_error("No new config available for restart");
                             continue;
                         }
                     }
@@ -212,8 +214,8 @@ where
                     }
                     Err(e) => {
                         if config.is_api_server {
-                            eprintln!("[API ERROR] ✗ Failed to bind {}: {}", new_addr, e);
-                            eprintln!("[API ERROR] API server will continue on old address: {}", old_addr);
+                            logger::log_api_error(&format!("✗ Failed to bind {}: {}", new_addr, e));
+                            logger::log_api_error(&format!("API server will continue on old address: {}", old_addr));
                         } else {
                             logger::log_bind_failed(&new_addr, &e);
                             let mut cfg = state.new_server_config.write().await;
@@ -301,10 +303,10 @@ fn accept_connection(
             if prev_count >= max_conn as usize {
                 // Exceeded limit: rollback counter and reject
                 conn_counter.fetch_sub(1, Ordering::SeqCst);
-                eprintln!(
-                    "[WARN] Max connections reached: {}/{}. Connection rejected.",
+                logger::log_warning(&format!(
+                    "Max connections reached: {}/{}. Connection rejected.",
                     prev_count, max_conn
-                );
+                ));
                 drop(stream);
                 return;
             }
@@ -388,11 +390,11 @@ fn handle_connection(
             Ok(Ok(_)) => {},
             Ok(Err(err)) => logger::log_connection_error(&err),
             Err(_) => {
-                eprintln!(
-                    "[WARN] Connection timeout after {} seconds, api_server: {}",
+                logger::log_warning(&format!(
+                    "Connection timeout after {} seconds, api_server: {}",
                     timeout_duration.as_secs(),
                     is_api_server
-                );
+                ));
             }
         }
         
@@ -455,7 +457,7 @@ async fn drain_old_listener(
                         );
                     }
                     Err(e) => {
-                        eprintln!("[OLD] Accept error: {}", e);
+                        logger::log_old_listener_error(&format!("Accept error: {}", e));
                         break;
                     }
                 }

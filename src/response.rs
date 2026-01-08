@@ -168,7 +168,7 @@ pub fn build_html_response(html: String, http_config: Arc<HttpConfig>) -> Respon
     builder
         .body(Full::new(Bytes::from(html)))
         .unwrap_or_else(|e| {
-            eprintln!("[ERROR] Failed to build HTML response: {}", e);
+            crate::logger::log_error(&format!("Failed to build HTML response: {}", e));
             Response::new(Full::new(Bytes::from("Internal Server Error")))
         })
 }
@@ -184,7 +184,7 @@ pub fn build_favicon_response(data: Vec<u8>) -> Response<Full<Bytes>> {
         .header("Cache-Control", "public, max-age=86400")
         .body(Full::new(Bytes::from(data)))
         .unwrap_or_else(|e| {
-            eprintln!("[ERROR] Failed to build favicon response: {}", e);
+            crate::logger::log_error(&format!("Failed to build favicon response: {}", e));
             Response::new(Full::new(Bytes::new()))
         })
 }
@@ -195,7 +195,7 @@ pub fn build_404_response() -> Response<Full<Bytes>> {
         .header("Content-Type", "text/plain")
         .body(Full::new(Bytes::from("Not Found")))
         .unwrap_or_else(|e| {
-            eprintln!("[ERROR] Failed to build 404 response: {}", e);
+            crate::logger::log_error(&format!("Failed to build 404 response: {}", e));
             Response::new(Full::new(Bytes::from("Not Found")))
         })
 }
@@ -206,7 +206,7 @@ pub fn build_413_response() -> Response<Full<Bytes>> {
         .header("Content-Type", "text/plain")
         .body(Full::new(Bytes::from("Request Entity Too Large")))
         .unwrap_or_else(|e| {
-            eprintln!("[ERROR] Failed to build 413 response: {}", e);
+            crate::logger::log_error(&format!("Failed to build 413 response: {}", e));
             Response::new(Full::new(Bytes::from("Request Entity Too Large")))
         })
 }
@@ -218,7 +218,7 @@ pub fn build_static_file_response(data: Vec<u8>, content_type: &str) -> Response
         .header("Cache-Control", "public, max-age=3600")
         .body(Full::new(Bytes::from(data)))
         .unwrap_or_else(|e| {
-            eprintln!("[ERROR] Failed to build static file response: {}", e);
+            crate::logger::log_error(&format!("Failed to build static file response: {}", e));
             Response::new(Full::new(Bytes::new()))
         })
 }
@@ -229,7 +229,7 @@ pub fn build_redirect_response(target: &str) -> Response<Full<Bytes>> {
         .header("Location", target)
         .body(Full::new(Bytes::from("")))
         .unwrap_or_else(|e| {
-            eprintln!("[ERROR] Failed to build redirect response: {}", e);
+            crate::logger::log_error(&format!("Failed to build redirect response: {}", e));
             Response::new(Full::new(Bytes::new()))
         })
 }

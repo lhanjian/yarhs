@@ -44,7 +44,7 @@ async fn handle_get_config(state: Arc<AppState>) -> Result<Response<Full<Bytes>>
     let json = match serde_json::to_string_pretty(&full_config) {
         Ok(j) => j,
         Err(e) => {
-            eprintln!("[ERROR] Failed to serialize config: {}", e);
+            logger::log_error(&format!("Failed to serialize config: {}", e));
             return Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header("Content-Type", "application/json")
@@ -60,7 +60,7 @@ async fn handle_get_config(state: Arc<AppState>) -> Result<Response<Full<Bytes>>
         .header("Content-Type", "application/json")
         .body(Full::new(Bytes::from(json)))
         .unwrap_or_else(|e| {
-            eprintln!("[ERROR] Failed to build response: {}", e);
+            logger::log_error(&format!("Failed to build response: {}", e));
             Response::new(Full::new(Bytes::from("Error")))
         }))
 }
@@ -212,7 +212,7 @@ async fn handle_put_config(
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(response_body.to_string())))
                 .unwrap_or_else(|e| {
-                    eprintln!("[ERROR] Failed to build restart response: {}", e);
+                    logger::log_error(&format!("Failed to build restart response: {}", e));
                     Response::new(Full::new(Bytes::from("OK")))
                 }));
         }
@@ -226,7 +226,7 @@ async fn handle_put_config(
         .header("Content-Type", "application/json")
         .body(Full::new(Bytes::from(r#"{"status":"ok","message":"Configuration updated"}"#)))
         .unwrap_or_else(|e| {
-            eprintln!("[ERROR] Failed to build response: {}", e);
+            logger::log_error(&format!("Failed to build response: {}", e));
             Response::new(Full::new(Bytes::from("OK")))
         }))
 }
