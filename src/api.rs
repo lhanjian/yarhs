@@ -18,9 +18,9 @@ pub async fn handle_api_config(
         return Ok(not_found());
     }
     
-    match req.method() {
-        &Method::GET => handle_get_config(state).await,
-        &Method::PUT => handle_put_config(req, state).await,
+    match *req.method() {
+        Method::GET => handle_get_config(state).await,
+        Method::PUT => handle_put_config(req, state).await,
         _ => Ok(method_not_allowed()),
     }
 }
@@ -36,12 +36,22 @@ async fn handle_get_config(state: Arc<AppState>) -> Result<Response<Full<Bytes>>
             "api_port": dynamic_config.server.api_port
         },
         "logging": dynamic_config.logging,
-        "http": dynamic_config.http,
-        "routes": dynamic_config.routes,
+        "http": &*dynamic_config.http,
+        "routes": &*dynamic_config.routes,
         "performance": dynamic_config.performance
     });
     
-    let json = serde_json::to_string_pretty(&full_config).unwrap();
+    let json = match serde_json::to_string_pretty(&full_config) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("[ERROR] Failed to serialize config: {}", e);
+            return Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(r#"{"error":"Internal server error"}"#)))
+                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Error")))));
+        }
+    };
     
     logger::log_api_request("GET", "/api/config", 200);
     
@@ -49,7 +59,10 @@ async fn handle_get_config(state: Arc<AppState>) -> Result<Response<Full<Bytes>>
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
         .body(Full::new(Bytes::from(json)))
-        .unwrap())
+        .unwrap_or_else(|e| {
+            eprintln!("[ERROR] Failed to build response: {}", e);
+            Response::new(Full::new(Bytes::from("Error")))
+        }))
 }
 
 async fn handle_put_config(
@@ -92,27 +105,28 @@ async fn handle_put_config(
         let mut config = state.dynamic_config.write().await;
         config.server = full_config.server.clone().unwrap_or(config.server.clone());
         config.logging = full_config.logging.clone();
-        config.http = full_config.http.clone();
-        config.routes = full_config.routes.clone();
+        config.http = Arc::new(full_config.http.clone());
+        config.routes = Arc::new(full_config.routes.clone());
         config.performance = full_config.performance.clone();
     }
     
     // Update cached config values
     state.update_cache(&crate::config::DynamicConfig {
         server: full_config.server.clone().unwrap_or_else(|| {
-            let current = state.current_server_config.blocking_read();
-            current.clone()
+            let current = state.dynamic_config.blocking_read();
+            current.server.clone()
         }),
         logging: full_config.logging,
-        http: full_config.http,
-        routes: full_config.routes,
+        http: Arc::new(full_config.http),
+        routes: Arc::new(full_config.routes),
         performance: full_config.performance,
     });
     
     // Check if server config changed or force_restart is true
     if let Some(new_server_config) = full_config.server {
         let (port_changed, api_port_changed) = {
-            let current_config = state.current_server_config.read().await;
+            let dynamic = state.dynamic_config.read().await;
+            let current_config = &dynamic.server;
             
             println!("[CONFIG] ========== Configuration Change Detection ==========");
             println!("[CONFIG] Current config: host={}, port={}, api_host={}, api_port={}", 
@@ -139,11 +153,11 @@ async fn handle_put_config(
             logger::log_api_request("PUT", "/api/config", 200);
             
             {
-                let current_config = state.current_server_config.read().await;
-                if full_config.force_restart && *current_config == new_server_config {
+                let dynamic = state.dynamic_config.read().await;
+                if full_config.force_restart && dynamic.server == new_server_config {
                     println!("[RESTART] Force restart requested for same address");
                 } else {
-                    logger::log_server_config_change(&current_config, &new_server_config);
+                    logger::log_server_config_change(&dynamic.server, &new_server_config);
                 }
             }
             
@@ -154,12 +168,7 @@ async fn handle_put_config(
                 println!("[CONFIG] New server config stored for restart");
             }
             
-            // Update current_server_config
-            {
-                let mut current = state.current_server_config.write().await;
-                *current = new_server_config.clone();
-                println!("[CONFIG] Current server config updated");
-            }
+            // Note: dynamic_config.server is already updated above, no need to update again
             
             println!("[CONFIG] All locks released, sending restart signals");
             
@@ -202,7 +211,10 @@ async fn handle_put_config(
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(response_body.to_string())))
-                .unwrap());
+                .unwrap_or_else(|e| {
+                    eprintln!("[ERROR] Failed to build restart response: {}", e);
+                    Response::new(Full::new(Bytes::from("OK")))
+                }));
         }
     }
     
@@ -213,7 +225,10 @@ async fn handle_put_config(
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
         .body(Full::new(Bytes::from(r#"{"status":"ok","message":"Configuration updated"}"#)))
-        .unwrap())
+        .unwrap_or_else(|e| {
+            eprintln!("[ERROR] Failed to build response: {}", e);
+            Response::new(Full::new(Bytes::from("OK")))
+        }))
 }
 
 fn method_not_allowed() -> Response<Full<Bytes>> {
@@ -221,7 +236,7 @@ fn method_not_allowed() -> Response<Full<Bytes>> {
         .status(StatusCode::METHOD_NOT_ALLOWED)
         .header("Content-Type", "text/plain")
         .body(Full::new(Bytes::from("Method Not Allowed")))
-        .unwrap()
+        .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Method Not Allowed"))))
 }
 
 fn not_found() -> Response<Full<Bytes>> {
@@ -229,7 +244,7 @@ fn not_found() -> Response<Full<Bytes>> {
         .status(StatusCode::NOT_FOUND)
         .header("Content-Type", "application/json")
         .body(Full::new(Bytes::from(r#"{"error":"Not Found","message":"Only /api/config is supported"}"#)))
-        .unwrap()
+        .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Not Found"))))
 }
 
 fn bad_request(message: &str) -> Response<Full<Bytes>> {
@@ -238,5 +253,5 @@ fn bad_request(message: &str) -> Response<Full<Bytes>> {
         .status(StatusCode::BAD_REQUEST)
         .header("Content-Type", "application/json")
         .body(Full::new(Bytes::from(body)))
-        .unwrap()
+        .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Bad Request"))))
 }

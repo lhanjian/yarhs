@@ -4,11 +4,9 @@ use hyper::Response;
 use tokio::fs;
 use std::path::Path;
 use std::sync::Arc;
-use pulldown_cmark::{Parser, Options, html};
-use crate::config::{HttpConfig, AppState};
+use crate::config::HttpConfig;
 
 const FAVICON_PATH: &str = "static/favicon.svg";
-const API_DOC_PATH: &str = "API.md";
 
 // Serve static files from static_dir
 pub async fn load_static_file(static_dir: &str, path: &str, route_prefix: &str) -> Option<(Vec<u8>, &'static str)> {
@@ -46,137 +44,118 @@ pub async fn load_static_file(static_dir: &str, path: &str, route_prefix: &str) 
     Some((content, content_type))
 }
 
-fn create_fallback_html() -> String {
+pub fn get_default_homepage() -> String {
     String::from(
         r#"<!DOCTYPE html>
-<html>
-<head><title>Server Running</title></head>
-<body><h1>Server is running</h1></body>
-</html>"#
-    )
-}
-
-pub async fn load_and_render_markdown(state: &Arc<AppState>) -> String {
-    // Try cache first
-    {
-        let cache = state.markdown_cache.read().await;
-        if let Some(cached) = cache.as_ref() {
-            return cached.clone();
-        }
-    }
-    
-    // Generate markdown HTML with async I/O
-    let html = match fs::read_to_string(API_DOC_PATH).await {
-        Ok(markdown_content) => {
-            let html_output = render_markdown(&markdown_content);
-            
-            // Wrap in HTML document with styling
-            format!(
-                r#"<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>API Documentation</title>
+    <title>YARHS - Rust Web Server</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <style>
-        body {{
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             line-height: 1.6;
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
-            color: #333;
-        }}
-        pre {{
-            background: #2d2d2d;
-            color: #f8f8f2;
-            padding: 15px;
-            border-radius: 5px;
-            overflow-x: auto;
-        }}
-        code {{
-            background: #e8e8e8;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: "Courier New", monospace;
-            font-size: 0.9em;
-        }}
-        pre code {{
-            background: transparent;
-            padding: 0;
-        }}
-        h1, h2, h3 {{
-            color: #667eea;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 5px;
-        }}
-        h1 {{ font-size: 2em; }}
-        h2 {{ font-size: 1.5em; margin-top: 30px; }}
-        h3 {{ font-size: 1.2em; }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            background: white;
-        }}
-        th, td {{
-            border: 1px solid #ddd;
-            padding: 12px;
-            text-align: left;
-        }}
-        th {{
-            background: #667eea;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            max-width: 600px;
+        }
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+        .emoji {
+            font-size: 4em;
+            margin-bottom: 20px;
+            animation: bounce 2s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+        p {
+            font-size: 1.2em;
+            margin: 15px 0;
+            opacity: 0.9;
+        }
+        .features {
+            margin-top: 30px;
+            text-align: left;
+            display: inline-block;
+        }
+        .features li {
+            margin: 10px 0;
+            list-style: none;
+            padding-left: 30px;
+            position: relative;
+        }
+        .features li:before {
+            content: "\2713";
+            position: absolute;
+            left: 0;
+            color: #4ade80;
             font-weight: bold;
-        }}
-        tr:nth-child(even) {{
-            background: #f9f9f9;
-        }}
-        a {{
-            color: #667eea;
+            font-size: 1.2em;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 0.9em;
+            opacity: 0.7;
+        }
+        a {
+            color: #4ade80;
             text-decoration: none;
-        }}
-        a:hover {{
+            font-weight: 600;
+        }
+        a:hover {
             text-decoration: underline;
-        }}
-        blockquote {{
-            border-left: 4px solid #667eea;
-            margin: 20px 0;
-            padding-left: 20px;
-            color: #666;
-        }}
-        hr {{
-            border: none;
-            border-top: 2px solid #ddd;
-            margin: 30px 0;
-        }}
+        }
     </style>
 </head>
 <body>
-{}
+    <div class="container">
+        <div class="emoji">🚀</div>
+        <h1>YARHS</h1>
+        <p><strong>Yet Another Rust HTTP Server</strong></p>
+        <p>高性能异步 Web 服务器</p>
+        
+        <ul class="features">
+            <li>动态路由配置</li>
+            <li>零停机热重启</li>
+            <li>高性能异步 I/O</li>
+            <li>智能缓存系统</li>
+        </ul>
+        
+        <div class="footer">
+            <p>Powered by <a href="https://www.rust-lang.org/" target="_blank">Rust</a> + <a href="https://tokio.rs/" target="_blank">Tokio</a> + <a href="https://hyper.rs/" target="_blank">Hyper</a></p>
+        </div>
+    </div>
 </body>
-</html>"#,
-                html_output
-            )
-        }
-        Err(_) => {
-            eprintln!("[Warning] Failed to load API.md, using fallback");
-            create_fallback_html()
-        }
-    };
-    
-    // Cache the result
-    {
-        let mut cache = state.markdown_cache.write().await;
-        *cache = Some(html.clone());
-    }
-    
-    html
+</html>"#
+    )
 }
 
-pub fn build_html_response(html: String, http_config: &HttpConfig) -> Response<Full<Bytes>> {
+pub fn build_html_response(html: String, http_config: Arc<HttpConfig>) -> Response<Full<Bytes>> {
     let mut builder = Response::builder()
         .status(200)
         .header("Content-Type", &http_config.default_content_type)
@@ -188,7 +167,10 @@ pub fn build_html_response(html: String, http_config: &HttpConfig) -> Response<F
     
     builder
         .body(Full::new(Bytes::from(html)))
-        .expect("Failed to build response")
+        .unwrap_or_else(|e| {
+            eprintln!("[ERROR] Failed to build HTML response: {}", e);
+            Response::new(Full::new(Bytes::from("Internal Server Error")))
+        })
 }
 
 pub async fn load_favicon() -> Option<Vec<u8>> {
@@ -201,7 +183,10 @@ pub fn build_favicon_response(data: Vec<u8>) -> Response<Full<Bytes>> {
         .header("Content-Type", "image/svg+xml")
         .header("Cache-Control", "public, max-age=86400")
         .body(Full::new(Bytes::from(data)))
-        .expect("Failed to build favicon response")
+        .unwrap_or_else(|e| {
+            eprintln!("[ERROR] Failed to build favicon response: {}", e);
+            Response::new(Full::new(Bytes::new()))
+        })
 }
 
 pub fn build_404_response() -> Response<Full<Bytes>> {
@@ -209,7 +194,10 @@ pub fn build_404_response() -> Response<Full<Bytes>> {
         .status(404)
         .header("Content-Type", "text/plain")
         .body(Full::new(Bytes::from("Not Found")))
-        .expect("Failed to build 404 response")
+        .unwrap_or_else(|e| {
+            eprintln!("[ERROR] Failed to build 404 response: {}", e);
+            Response::new(Full::new(Bytes::from("Not Found")))
+        })
 }
 
 pub fn build_413_response() -> Response<Full<Bytes>> {
@@ -217,7 +205,10 @@ pub fn build_413_response() -> Response<Full<Bytes>> {
         .status(413)
         .header("Content-Type", "text/plain")
         .body(Full::new(Bytes::from("Request Entity Too Large")))
-        .expect("Failed to build 413 response")
+        .unwrap_or_else(|e| {
+            eprintln!("[ERROR] Failed to build 413 response: {}", e);
+            Response::new(Full::new(Bytes::from("Request Entity Too Large")))
+        })
 }
 
 pub fn build_static_file_response(data: Vec<u8>, content_type: &str) -> Response<Full<Bytes>> {
@@ -226,7 +217,10 @@ pub fn build_static_file_response(data: Vec<u8>, content_type: &str) -> Response
         .header("Content-Type", content_type)
         .header("Cache-Control", "public, max-age=3600")
         .body(Full::new(Bytes::from(data)))
-        .expect("Failed to build static file response")
+        .unwrap_or_else(|e| {
+            eprintln!("[ERROR] Failed to build static file response: {}", e);
+            Response::new(Full::new(Bytes::new()))
+        })
 }
 
 pub fn build_redirect_response(target: &str) -> Response<Full<Bytes>> {
@@ -234,19 +228,8 @@ pub fn build_redirect_response(target: &str) -> Response<Full<Bytes>> {
         .status(302)
         .header("Location", target)
         .body(Full::new(Bytes::from("")))
-        .expect("Failed to build redirect response")
-}
-
-// Make render_markdown public for custom routes
-pub fn render_markdown(md_content: &str) -> String {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_FOOTNOTES);
-    options.insert(Options::ENABLE_TASKLISTS);
-
-    let parser = Parser::new_ext(md_content, options);
-    let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
-    html_output
+        .unwrap_or_else(|e| {
+            eprintln!("[ERROR] Failed to build redirect response: {}", e);
+            Response::new(Full::new(Bytes::new()))
+        })
 }

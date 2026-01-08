@@ -44,10 +44,10 @@ pub async fn handle_request(
         }
     }
     
-    // Get routes configuration
+    // Get routes configuration (Arc reference, no clone)
     let routes = {
         let config = state.dynamic_config.read().await;
-        config.routes.clone()
+        Arc::clone(&config.routes)
     };
     
     // Route handling with dynamic configuration
@@ -75,16 +75,16 @@ pub async fn handle_request(
         {
             handle_custom_route(path, handler, &state, access_log, prefix).await
         }
-        // 5. Default: Markdown homepage
+        // 5. Default: Simple homepage
         else {
             let http_config = {
                 let config = state.dynamic_config.read().await;
-                config.http.clone()
+                Arc::clone(&config.http)
             };
             
-            let html = response::load_and_render_markdown(&state).await;
+            let html = response::get_default_homepage();
             let html_len = html.len();
-            let resp = response::build_html_response(html, &http_config);
+            let resp = response::build_html_response(html, http_config);
             
             if access_log {
                 logger::log_response(html_len);
@@ -120,30 +120,13 @@ async fn handle_custom_route(
             if let Ok(content) = tokio::fs::read_to_string(file).await {
                 let http_config = {
                     let config = state.dynamic_config.read().await;
-                    config.http.clone()
+                    Arc::clone(&config.http)
                 };
                 let size = content.len();
                 if access_log {
                     logger::log_response(size);
                 }
-                response::build_html_response(content, &http_config)
-            } else {
-                response::build_404_response()
-            }
-        }
-        RouteHandler::Markdown { file } => {
-            // Load and render Markdown file
-            if let Ok(md_content) = tokio::fs::read_to_string(file).await {
-                let http_config = {
-                    let config = state.dynamic_config.read().await;
-                    config.http.clone()
-                };
-                let html = response::render_markdown(&md_content);
-                let size = html.len();
-                if access_log {
-                    logger::log_response(size);
-                }
-                response::build_html_response(html, &http_config)
+                response::build_html_response(content, http_config)
             } else {
                 response::build_404_response()
             }

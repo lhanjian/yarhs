@@ -15,12 +15,12 @@ pub struct Config {
 }
 
 // Dynamic configuration that can be modified at runtime
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct DynamicConfig {
     pub server: DynamicServerConfig,
     pub logging: LoggingConfig,
-    pub http: HttpConfig,
-    pub routes: RoutesConfig,
+    pub http: Arc<HttpConfig>,
+    pub routes: Arc<RoutesConfig>,
     pub performance: DynamicPerformanceConfig,
 }
 
@@ -45,7 +45,6 @@ pub struct RoutesConfig {
 pub enum RouteHandler {
     Static { dir: String },              // 静态文件目录
     Template { file: String },           // 模板文件
-    Markdown { file: String },           // Markdown文件
     Redirect { target: String },         // 重定向
 }
 
@@ -144,8 +143,8 @@ impl Config {
                 api_port: self.server.api_port,
             },
             logging: self.logging.clone(),
-            http: self.http.clone(),
-            routes: self.routes.clone(),
+            http: Arc::new(self.http.clone()),
+            routes: Arc::new(self.routes.clone()),
             performance: DynamicPerformanceConfig {
                 keep_alive_timeout: self.performance.keep_alive_timeout,
                 read_timeout: self.performance.read_timeout,
@@ -154,25 +153,14 @@ impl Config {
             },
         }
     }
-    
-    pub fn get_dynamic_server_config(&self) -> DynamicServerConfig {
-        DynamicServerConfig {
-            host: self.server.host.clone(),
-            port: self.server.port,
-            api_host: self.server.api_host.clone(),
-            api_port: self.server.api_port,
-        }
-    }
 }
 
 pub struct AppState {
     pub config: Config,
-    pub current_server_config: Arc<RwLock<DynamicServerConfig>>,
     pub dynamic_config: RwLock<DynamicConfig>,
     pub restart_signal: Arc<Notify>,
     pub new_server_config: Arc<RwLock<Option<DynamicServerConfig>>>,
     pub api_restart_signal: Arc<Notify>,
-    pub markdown_cache: RwLock<Option<String>>,
     
     // Cached config values for fast access without locks
     pub cached_access_log: Arc<AtomicBool>,
@@ -181,16 +169,13 @@ pub struct AppState {
 impl AppState {
     pub fn new(config: &Config) -> Self {
         let dynamic = config.to_dynamic();
-        let server_config = config.get_dynamic_server_config();
         
         Self {
             config: config.clone(),
-            current_server_config: Arc::new(RwLock::new(server_config)),
             dynamic_config: RwLock::new(dynamic),
             restart_signal: Arc::new(Notify::new()),
             new_server_config: Arc::new(RwLock::new(None)),
             api_restart_signal: Arc::new(Notify::new()),
-            markdown_cache: RwLock::new(None),
             cached_access_log: Arc::new(AtomicBool::new(config.logging.access_log)),
         }
     }
