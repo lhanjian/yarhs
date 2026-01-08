@@ -12,27 +12,90 @@ mod handler;
 mod logger;
 mod response;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = config::Config::load()?;
-    let addr = cfg.get_socket_addr()?;
-    let listener = create_reusable_listener(addr)?;
+    
+    // 创建 Tokio 运行时，根据 workers 配置设置线程数
+    let mut runtime_builder = tokio::runtime::Builder::new_multi_thread();
+    runtime_builder.enable_all();
+    
+    if let Some(workers) = cfg.server.workers {
+        runtime_builder.worker_threads(workers);
+        println!("[CONFIG] Using {} worker threads", workers);
+    } else {
+        println!("[CONFIG] Using default worker threads (CPU cores)");
+    }
+    
+    let runtime = runtime_builder.build()?;
+    
+    runtime.block_on(async_main(cfg))
+}
+
+async fn async_main(cfg: config::Config) -> Result<(), Box<dyn std::error::Error>> {
+    let app_addr = cfg.get_socket_addr()?;
+    let api_addr = cfg.get_api_socket_addr()?;
+    
+    let app_listener = create_reusable_listener(app_addr)?;
+    let api_listener = create_reusable_listener(api_addr)?;
     
     let state = Arc::new(config::AppState::new(&cfg));
-    let active_connections = Arc::new(AtomicUsize::new(0));
+    let app_connections = Arc::new(AtomicUsize::new(0));
+    let api_connections = Arc::new(AtomicUsize::new(0));
     
-    logger::log_server_start(&addr, &cfg);
-    println!("[API] Dynamic configuration endpoint: http://{}/api/config", addr);
-    println!("  - GET  /api/config  (view current config)");
-    println!("  - PUT  /api/config  (update config)");
-    println!("[INFO] Server supports graceful restart for host/port changes\n");
+    logger::log_server_start(&app_addr, &cfg);
+    println!("[API] Management API running on: http://{}", api_addr);
+    println!("  - GET  http://{}/api/config  (view current config)", api_addr);
+    println!("  - PUT  http://{}/api/config  (update config)", api_addr);
+    println!("[INFO] Application and API ports are separated");
+    println!("[INFO] Server supports graceful restart for host/port changes");
+    println!("[CONFIG] Loaded configuration:");
+    println!("  - Main server: {}:{}", cfg.server.host, cfg.server.port);
+    println!("  - API server: {}:{}", cfg.server.api_host, cfg.server.api_port);
+    println!("  - Max body size: {} bytes", cfg.http.max_body_size);
+    println!("  - Max connections: {:?}\n", cfg.performance.max_connections);
 
     // Use LocalSet for spawn_local support
     let local = tokio::task::LocalSet::new();
-    local.run_until(start_server_loop(listener, state, active_connections)).await
+    local.run_until(run_dual_servers(
+        app_listener,
+        api_listener,
+        state,
+        app_connections,
+        api_connections,
+    )).await
 }
 
-async fn start_server_loop(
+async fn run_dual_servers(
+    app_listener: TcpListener,
+    api_listener: TcpListener,
+    state: Arc<config::AppState>,
+    app_connections: Arc<AtomicUsize>,
+    api_connections: Arc<AtomicUsize>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let state_clone = state.clone();
+    let api_connections_clone = api_connections.clone();
+    
+    // Spawn API server task
+    tokio::task::spawn_local(async move {
+        if let Err(e) = run_api_server(api_listener, state_clone, api_connections_clone).await {
+            eprintln!("[API ERROR] API server error: {}", e);
+        }
+    });
+    
+    // Run app server in main task
+    start_server_loop(app_listener, state, app_connections, false).await
+}
+
+async fn run_api_server(
+    listener: TcpListener,
+    state: Arc<config::AppState>,
+    active_connections: Arc<AtomicUsize>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("[API] API server listening...");
+    start_api_server_loop(listener, state, active_connections).await
+}
+
+async fn start_api_server_loop(
     mut listener: TcpListener,
     state: Arc<config::AppState>,
     active_connections: Arc<AtomicUsize>,
@@ -47,8 +110,97 @@ async fn start_server_loop(
                             peer_addr,
                             &state,
                             &active_connections,
+                            false,  // API不限制连接数
+                            "[API]",
+                            true,   // is_api_server = true
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("[API ERROR] Failed to accept connection: {}", e);
+                    }
+                }
+            }
+            
+            _ = state.api_restart_signal.notified() => {
+                println!("[API RESTART] ========== API Restart Signal Received ==========");
+                
+                let new_config = {
+                    let config = state.new_server_config.read().await;
+                    config.clone().unwrap()
+                };
+                
+                let old_addr = listener.local_addr()?;
+                let new_addr = format!("{}:{}", new_config.api_host, new_config.api_port)
+                    .parse::<std::net::SocketAddr>()?;
+                
+                println!("[API RESTART] Current address: {}", old_addr);
+                println!("[API RESTART] New address: {}", new_addr);
+                println!("[API RESTART] New config: host={}, port={}, api_host={}, api_port={}", 
+                         new_config.host, new_config.port, new_config.api_host, new_config.api_port);
+                
+                let same_addr = old_addr == new_addr;
+                    
+                println!("[API RESTART] Attempting to bind new address: {}", new_addr);
+                let new_listener = match create_reusable_listener(new_addr) {
+                    Ok(l) => {
+                        println!("[API RESTART] ✓ New listener successfully bound on {}", new_addr);
+                        l
+                    }
+                    Err(e) => {
+                        eprintln!("[API ERROR] ✗ Failed to bind {}: {}", new_addr, e);
+                        eprintln!("[API ERROR] API server will continue on old address: {}", old_addr);
+                        continue;
+                    }
+                };
+                
+                println!("[API RESTART] Starting new server loop on {}", new_addr);
+                
+                if same_addr {
+                    println!("[API RESTART] Force restart on same address: {}", new_addr);
+                } else {
+                    println!("[API RESTART] Switching from {} to {}", old_addr, new_addr);
+                }
+                
+                let old_listener = listener;
+                let old_state = Arc::clone(&state);
+                let old_counter = Arc::clone(&active_connections);
+                
+                tokio::task::spawn_local(async move {
+                    drain_old_listener(
+                        old_listener,
+                        old_state,
+                        old_counter,
+                    ).await;
+                });
+                
+                listener = new_listener;
+                println!("[API RESTART] ✓ Listener switched successfully");
+                println!("[API RESTART] ========== API Server Now Running on {} ==========", new_addr);
+                println!("[API RESTART] Old address {} is being drained and will close soon\n", old_addr);
+            }
+        }
+    }
+}
+
+async fn start_server_loop(
+    mut listener: TcpListener,
+    state: Arc<config::AppState>,
+    active_connections: Arc<AtomicUsize>,
+    is_api_server: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    loop {
+        tokio::select! {
+            accept_result = listener.accept() => {
+                match accept_result {
+                    Ok((stream, peer_addr)) => {
+                        accept_connection(
+                            stream,
+                            peer_addr,
+                            &state,
+                            &active_connections,
                             true,  // check_limits
                             "",    // no prefix
+                            is_api_server,
                         );
                     }
                     Err(e) => {
@@ -144,6 +296,7 @@ async fn start_server_loop(
 /// * `conn_counter` - Active connection counter
 /// * `check_limits` - Whether to check max connection limits
 /// * `log_prefix` - Prefix for log messages (e.g., "OLD" for old listener)
+/// * `is_api_server` - Whether this is the API management server
 fn accept_connection(
     stream: tokio::net::TcpStream,
     peer_addr: std::net::SocketAddr,
@@ -151,6 +304,7 @@ fn accept_connection(
     conn_counter: &Arc<AtomicUsize>,
     check_limits: bool,
     log_prefix: &str,
+    is_api_server: bool,
 ) {
     // Increment counter first, then check limit (prevents race condition)
     let prev_count = conn_counter.fetch_add(1, Ordering::SeqCst);
@@ -190,6 +344,7 @@ fn accept_connection(
         stream,
         Arc::clone(state),
         Arc::clone(conn_counter),
+        is_api_server,
     );
 }
 
@@ -207,10 +362,12 @@ fn accept_connection(
 /// * `stream` - The TCP stream to handle
 /// * `state` - Shared application state
 /// * `conn_counter` - Active connection counter to decrement when done
+/// * `is_api_server` - Whether this is handling API management requests
 fn handle_connection(
     stream: tokio::net::TcpStream,
     state: Arc<config::AppState>,
     conn_counter: Arc<AtomicUsize>,
+    is_api_server: bool,
 ) {
     tokio::task::spawn_local(async move {
         let io = TokioIo::new(stream);
@@ -232,7 +389,16 @@ fn handle_connection(
         
         // Serve connection
         let conn = builder.serve_connection(io, service_fn(move |req| {
-            handler::handle_request(req, Arc::clone(&state))
+            let state_clone = Arc::clone(&state);
+            async move {
+                if is_api_server {
+                    // API server只处理API请求
+                    api::handle_api_config(req, state_clone).await
+                } else {
+                    // 应用服务器处理所有非API请求
+                    handler::handle_request(req, state_clone).await
+                }
+            }
         }));
         
         // Apply timeout and handle result
@@ -241,8 +407,9 @@ fn handle_connection(
             Ok(Err(err)) => logger::log_connection_error(&err),
             Err(_) => {
                 eprintln!(
-                    "[WARN] Connection timeout after {} seconds",
-                    timeout_duration.as_secs()
+                    "[WARN] Connection timeout after {} seconds, api_server: {}",
+                    timeout_duration.as_secs(),
+                    is_api_server
                 );
             }
         }
@@ -288,6 +455,8 @@ async fn drain_old_listener(
     
     // Accept connections from old listener for 100ms
     loop {
+        let mut i = 0;
+        i += 1;
         tokio::select! {
             accept_result = old_listener.accept() => {
                 match accept_result {
@@ -299,6 +468,7 @@ async fn drain_old_listener(
                             &conn_counter,
                             false,  // don't check limits for backlog connections
                             "OLD",  // log prefix
+                            false,  // is_api_server
                         );
                     }
                     Err(e) => {
@@ -313,6 +483,7 @@ async fn drain_old_listener(
                 break;
             }
         }
+        println!("[RESTART] Continuing to drain backlog... iteration {}", i);
     }
     
     // Close old listener immediately

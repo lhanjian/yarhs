@@ -7,7 +7,6 @@ pub fn log_server_start(addr: &SocketAddr, config: &Config) {
     println!("Async server started successfully");
     println!("Listening on: http://{}", addr);
     println!("Log level: {}", config.logging.level);
-    println!("Template directory: {}", config.resources.template_dir);
     if let Some(workers) = config.server.workers {
         println!("Worker threads: {}", workers);
     }

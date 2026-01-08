@@ -1,15 +1,14 @@
 [server]
 host = "127.0.0.1"
 port = 8080
+api_host = "0.0.0.0"  # API服务器监听地址
+api_port = 8000       # API管理端口（独立于主服务端口）
+workers = 4           # Tokio 运行时工作线程数（默认为 CPU 核心数）
 
 [logging]
 level = "debug"
 access_log = false
 show_headers = false
-
-[resources]
-template_dir = "templates"
-max_body_size = 10485760
 
 [performance]
 keep_alive_timeout = 75
@@ -20,16 +19,19 @@ max_connections = 5000
 [http]
 server_name = "Tokio-Hyper/1.0"
 default_content_type = "text/html; charset=utf-8"
-enable_cors = true
+enable_cors = false
+max_body_size = 10485760  # 10MB (HTTP 请求体大小限制)
 
 [routes]
-api_prefix = "/api"
-static_prefix = "/static"
 favicon_paths = ["/favicon.ico", "/favicon.svg"]
 
-# 自定义路由示例（可选）
-# [routes.custom_routes]
+# 静态目录映射（统一配置）
+[routes.custom_routes]
+"/static" = { type = "static", dir = "static" }
+"/about" = { type = "template", file = "templates/about.html" }
+"/home" = { type = "template", file = "templates/index.html" }
+
+# 更多路由示例（可选）
 # "/docs" = { type = "markdown", file = "docs/README.md" }
-# "/about" = { type = "template", file = "templates/about.html" }
 # "/old-path" = { type = "redirect", target = "/new-path" }
-# "/files" = { type = "static", dir = "uploads" }
+# "/uploads" = { type = "static", dir = "user_uploads" }

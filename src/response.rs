@@ -11,12 +11,13 @@ const FAVICON_PATH: &str = "static/favicon.svg";
 const API_DOC_PATH: &str = "API.md";
 
 // Serve static files from static_dir
-pub async fn load_static_file(static_dir: &str, path: &str) -> Option<(Vec<u8>, &'static str)> {
+pub async fn load_static_file(static_dir: &str, path: &str, route_prefix: &str) -> Option<(Vec<u8>, &'static str)> {
     // Remove leading slash and prevent directory traversal
     let clean_path = path.trim_start_matches('/').replace("..", "");
     
-    // Remove "static/" prefix from path since static_dir already points to static folder
-    let relative_path = clean_path.strip_prefix("static/").unwrap_or(&clean_path);
+    // Remove route prefix from path (e.g., "static" from "/static/file.css")
+    let relative_path = clean_path.strip_prefix(&format!("{}/", route_prefix.trim_matches('/')))
+        .unwrap_or(&clean_path);
     let file_path = Path::new(static_dir).join(relative_path);
     
     // Security: ensure file_path is within static_dir

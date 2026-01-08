@@ -6,7 +6,6 @@ use hyper::{Request, Response};
 use crate::config::{AppState, RouteHandler};
 use crate::logger;
 use crate::response;
-use crate::api;
 
 pub async fn handle_request(
     req: Request<hyper::body::Incoming>,
@@ -33,7 +32,7 @@ pub async fn handle_request(
     logger::log_headers_count(req.headers().len(), show_headers);
     
     // Check request body size limit
-    let max_body_size = state.config.resources.max_body_size;
+    let max_body_size = state.config.http.max_body_size;
     if let Some(content_length) = req.headers().get("content-length") {
         if let Ok(size_str) = content_length.to_str() {
             if let Ok(size) = size_str.parse::<u64>() {
@@ -52,13 +51,10 @@ pub async fn handle_request(
     };
     
     // Route handling with dynamic configuration
+    // Note: API routes are handled by separate API server on port 8000
     let response = 
-        // 1. API routes (always checked first)
-        if path.starts_with(&routes.api_prefix) {
-            return api::handle_api_config(req, state).await;
-        }
-        // 2. Favicon routes
-        else if routes.favicon_paths.iter().any(|p| path == p) {
+        // 1. Favicon routes
+        if routes.favicon_paths.iter().any(|p| path == p) {
             if let Some(favicon_data) = response::load_favicon().await {
                 let size = favicon_data.len();
                 if access_log {
@@ -69,25 +65,15 @@ pub async fn handle_request(
                 response::build_404_response()
             }
         }
-        // 3. Custom routes (exact match first)
+        // 3. Custom routes (exact match)
         else if let Some(handler) = routes.custom_routes.get(path) {
-            handle_custom_route(path, handler, &state, access_log).await
+            handle_custom_route(path, handler, &state, access_log, path).await
         }
-        // 4. Static file routes (prefix match)
-        else if path.starts_with(&routes.static_prefix) {
-            if let Some(ref static_dir) = state.config.resources.static_dir {
-                if let Some((content, content_type)) = response::load_static_file(static_dir, path).await {
-                    let size = content.len();
-                    if access_log {
-                        logger::log_response(size);
-                    }
-                    response::build_static_file_response(content, content_type)
-                } else {
-                    response::build_404_response()
-                }
-            } else {
-                response::build_404_response()
-            }
+        // 4. Check for prefix-based custom routes (e.g., /static/*)
+        else if let Some((prefix, handler)) = routes.custom_routes.iter()
+            .find(|(prefix, _)| path.starts_with(prefix.as_str())) 
+        {
+            handle_custom_route(path, handler, &state, access_log, prefix).await
         }
         // 5. Default: Markdown homepage
         else {
@@ -114,11 +100,12 @@ async fn handle_custom_route(
     handler: &RouteHandler,
     state: &Arc<AppState>,
     access_log: bool,
+    route_prefix: &str,  // Add route prefix parameter
 ) -> Response<Full<Bytes>> {
     match handler {
         RouteHandler::Static { dir } => {
             // Serve file from custom static directory
-            if let Some((content, content_type)) = response::load_static_file(dir, path).await {
+            if let Some((content, content_type)) = response::load_static_file(dir, path, route_prefix).await {
                 let size = content.len();
                 if access_log {
                     logger::log_response(size);

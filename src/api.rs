@@ -10,6 +10,14 @@ pub async fn handle_api_config(
     req: Request<hyper::body::Incoming>,
     state: Arc<AppState>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
+    let path = req.uri().path();
+    
+    // Validate path matches /api/config
+    if path != "/api/config" {
+        logger::log_api_request(req.method().as_str(), path, 404);
+        return Ok(not_found());
+    }
+    
     match req.method() {
         &Method::GET => handle_get_config(state).await,
         &Method::PUT => handle_put_config(req, state).await,
@@ -19,17 +27,18 @@ pub async fn handle_api_config(
 
 async fn handle_get_config(state: Arc<AppState>) -> Result<Response<Full<Bytes>>, Infallible> {
     let dynamic_config = state.dynamic_config.read().await;
-    let server_config = state.current_server_config.read().await;
     
     let full_config = serde_json::json!({
         "server": {
-            "host": server_config.host,
-            "port": server_config.port
+            "host": dynamic_config.server.host,
+            "port": dynamic_config.server.port,
+            "api_host": dynamic_config.server.api_host,
+            "api_port": dynamic_config.server.api_port
         },
         "logging": dynamic_config.logging,
         "http": dynamic_config.http,
-        "resources": dynamic_config.resources,
-        "routes": dynamic_config.routes
+        "routes": dynamic_config.routes,
+        "performance": dynamic_config.performance
     });
     
     let json = serde_json::to_string_pretty(&full_config).unwrap();
@@ -64,8 +73,8 @@ async fn handle_put_config(
         server: Option<DynamicServerConfig>,
         logging: crate::config::LoggingConfig,
         http: crate::config::HttpConfig,
-        resources: crate::config::DynamicResourcesConfig,
         routes: crate::config::RoutesConfig,
+        performance: crate::config::DynamicPerformanceConfig,
         #[serde(default)]
         force_restart: bool,
     }
@@ -81,52 +90,112 @@ async fn handle_put_config(
     // Update dynamic configuration
     {
         let mut config = state.dynamic_config.write().await;
+        config.server = full_config.server.clone().unwrap_or(config.server.clone());
         config.logging = full_config.logging.clone();
         config.http = full_config.http.clone();
-        config.resources = full_config.resources.clone();
         config.routes = full_config.routes.clone();
+        config.performance = full_config.performance.clone();
     }
     
     // Update cached config values
     state.update_cache(&crate::config::DynamicConfig {
+        server: full_config.server.clone().unwrap_or_else(|| {
+            let current = state.current_server_config.blocking_read();
+            current.clone()
+        }),
         logging: full_config.logging,
         http: full_config.http,
-        resources: full_config.resources,
         routes: full_config.routes,
+        performance: full_config.performance,
     });
     
     // Check if server config changed or force_restart is true
     if let Some(new_server_config) = full_config.server {
-        let current_config = state.current_server_config.read().await;
+        let (port_changed, api_port_changed) = {
+            let current_config = state.current_server_config.read().await;
+            
+            println!("[CONFIG] ========== Configuration Change Detection ==========");
+            println!("[CONFIG] Current config: host={}, port={}, api_host={}, api_port={}", 
+                     current_config.host, current_config.port, current_config.api_host, current_config.api_port);
+            println!("[CONFIG] New config: host={}, port={}, api_host={}, api_port={}", 
+                     new_server_config.host, new_server_config.port, new_server_config.api_host, new_server_config.api_port);
+            
+            // Check what changed
+            let port_changed = current_config.port != new_server_config.port || 
+                              current_config.host != new_server_config.host;
+            let api_port_changed = current_config.api_port != new_server_config.api_port ||
+                                  current_config.api_host != new_server_config.api_host;
+            
+            println!("[CONFIG] Change detection:");
+            println!("[CONFIG]   - Main server (host/port) changed: {}", port_changed);
+            println!("[CONFIG]   - API server (api_host/api_port) changed: {}", api_port_changed);
+            println!("[CONFIG]   - Force restart: {}", full_config.force_restart);
+            
+            (port_changed, api_port_changed)
+        }; // Release read lock here
         
         // Trigger restart if config changed OR force_restart is true
-        if *current_config != new_server_config || full_config.force_restart {
+        if port_changed || api_port_changed || full_config.force_restart {
             logger::log_api_request("PUT", "/api/config", 200);
             
-            if full_config.force_restart && *current_config == new_server_config {
-                println!("[RESTART] Force restart requested for same address: {}:{}", 
-                         new_server_config.host, new_server_config.port);
-            } else {
-                logger::log_server_config_change(&current_config, &new_server_config);
+            {
+                let current_config = state.current_server_config.read().await;
+                if full_config.force_restart && *current_config == new_server_config {
+                    println!("[RESTART] Force restart requested for same address");
+                } else {
+                    logger::log_server_config_change(&current_config, &new_server_config);
+                }
             }
             
-            // Store new server config and trigger restart
+            // Store new server config and trigger restart(s)
             {
                 let mut cfg = state.new_server_config.write().await;
                 *cfg = Some(new_server_config.clone());
+                println!("[CONFIG] New server config stored for restart");
             }
-            state.restart_signal.notify_one();
             
-            let message = if full_config.force_restart && *current_config == new_server_config {
-                "Configuration updated. Server will restart on same address (force restart)."
+            // Update current_server_config
+            {
+                let mut current = state.current_server_config.write().await;
+                *current = new_server_config.clone();
+                println!("[CONFIG] Current server config updated");
+            }
+            
+            println!("[CONFIG] All locks released, sending restart signals");
+            
+            // Trigger main server restart if port/host changed
+            if port_changed || full_config.force_restart {
+                println!("[CONFIG] Triggering main server restart signal");
+                state.restart_signal.notify_one();
+            }
+            
+            // Trigger API server restart if api_port changed
+            if api_port_changed || full_config.force_restart {
+                println!("[CONFIG] Triggering API server restart signal");
+                state.api_restart_signal.notify_one();
+            }
+            
+            println!("[CONFIG] ========== Restart Signals Sent ==========");
+            
+            let mut changes = Vec::new();
+            if port_changed {
+                changes.push(format!("Main server: {}:{}", new_server_config.host, new_server_config.port));
+            }
+            if api_port_changed {
+                changes.push(format!("API server: {}:{}", new_server_config.api_host, new_server_config.api_port));
+            }
+            
+            let message = if changes.is_empty() {
+                "Configuration updated. Servers will restart (force restart).".to_string()
             } else {
-                "Configuration updated. Server will restart with new host/port."
+                format!("Configuration updated. Restarting: {}", changes.join(", "))
             };
             
             let response_body = serde_json::json!({
                 "status": "ok",
                 "message": message,
-                "new_address": format!("{}:{}", new_server_config.host, new_server_config.port)
+                "main_address": format!("{}:{}", new_server_config.host, new_server_config.port),
+                "api_address": format!("{}:{}", new_server_config.api_host, new_server_config.api_port)
             });
             
             return Ok(Response::builder()
@@ -152,6 +221,14 @@ fn method_not_allowed() -> Response<Full<Bytes>> {
         .status(StatusCode::METHOD_NOT_ALLOWED)
         .header("Content-Type", "text/plain")
         .body(Full::new(Bytes::from("Method Not Allowed")))
+        .unwrap()
+}
+
+fn not_found() -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .header("Content-Type", "application/json")
+        .body(Full::new(Bytes::from(r#"{"error":"Not Found","message":"Only /api/config is supported"}"#)))
         .unwrap()
 }
 
