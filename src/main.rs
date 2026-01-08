@@ -84,15 +84,18 @@ async fn run_dual_servers(
     
     // Run app server in main task
     let restart_signal = Arc::clone(&state.restart_signal);
+    let config = ServerLoopConfig {
+        is_api_server: false,
+        check_connection_limits: true,
+        restart_signal,
+        get_new_addr: |config| format!("{}:{}", config.host, config.port),
+        log_prefix: "",
+    };
     start_server_loop(
         app_listener,
         state,
         app_connections,
-        false, // is_api_server
-        true,  // check_connection_limits
-        restart_signal,
-        |config| format!("{}:{}", config.host, config.port),
-        "",    // no log prefix
+        config,
     ).await
 }
 
@@ -103,32 +106,46 @@ async fn run_api_server(
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("[API] API server listening...");
     let api_restart_signal = Arc::clone(&state.api_restart_signal);
+    let config = ServerLoopConfig {
+        is_api_server: true,
+        check_connection_limits: false,
+        restart_signal: api_restart_signal,
+        get_new_addr: |config| format!("{}:{}", config.api_host, config.api_port),
+        log_prefix: "[API]",
+    };
     start_server_loop(
         listener,
         state,
         active_connections,
-        true,   // is_api_server
-        false,  // check_connection_limits
-        api_restart_signal,
-        |config| format!("{}:{}", config.api_host, config.api_port),
-        "[API]",
+        config,
     ).await
+}
+
+/// Configuration for server loop behavior
+struct ServerLoopConfig<F>
+where
+    F: Fn(&config::DynamicServerConfig) -> String,
+{
+    is_api_server: bool,
+    check_connection_limits: bool,
+    restart_signal: Arc<tokio::sync::Notify>,
+    get_new_addr: F,
+    log_prefix: &'static str,
 }
 
 /// Unified server loop that handles both main and API servers
 /// 
 /// This function consolidates the common logic between main server and API server loops,
 /// reducing code duplication and improving maintainability.
-async fn start_server_loop(
+async fn start_server_loop<F>(
     mut listener: TcpListener,
     state: Arc<config::AppState>,
     active_connections: Arc<AtomicUsize>,
-    is_api_server: bool,
-    check_connection_limits: bool,
-    restart_signal: Arc<tokio::sync::Notify>,
-    get_new_addr: impl Fn(&config::DynamicServerConfig) -> String,
-    log_prefix: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+    config: ServerLoopConfig<F>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: Fn(&config::DynamicServerConfig) -> String,
+{
     loop {
         tokio::select! {
             accept_result = listener.accept() => {
@@ -139,21 +156,21 @@ async fn start_server_loop(
                             peer_addr,
                             &state,
                             &active_connections,
-                            check_connection_limits,
-                            if log_prefix.is_empty() { "" } else { log_prefix },
-                            is_api_server,
+                            config.check_connection_limits,
+                            config.log_prefix,
+                            config.is_api_server,
                         );
                     }
                     Err(e) => {
                         eprintln!("[{}ERROR] Failed to accept connection: {}", 
-                                 if log_prefix.is_empty() { "" } else { log_prefix },
+                            config.log_prefix,
                                  e);
                     }
                 }
             }
             
-            _ = restart_signal.notified() => {
-                if !is_api_server {
+            _ = config.restart_signal.notified() => {
+                if !config.is_api_server {
                     logger::log_restart_triggered();
                 } else {
                     println!("[API RESTART] ========== API Restart Signal Received ==========");
@@ -171,10 +188,10 @@ async fn start_server_loop(
                 };
                 
                 let old_addr = listener.local_addr()?;
-                let new_addr_str = get_new_addr(&new_config);
+                let new_addr_str = (config.get_new_addr)(&new_config);
                 let new_addr = new_addr_str.parse::<std::net::SocketAddr>()?;
                 
-                if is_api_server {
+                if config.is_api_server {
                     println!("[API RESTART] Current address: {}", old_addr);
                     println!("[API RESTART] New address: {}", new_addr);
                 } else {
@@ -186,7 +203,7 @@ async fn start_server_loop(
                 // Bind new listener
                 let new_listener = match create_reusable_listener(new_addr) {
                     Ok(l) => {
-                        if is_api_server {
+                        if config.is_api_server {
                             println!("[API RESTART] ✓ New listener successfully bound on {}", new_addr);
                         } else {
                             logger::log_new_listener_bound(&new_addr);
@@ -194,7 +211,7 @@ async fn start_server_loop(
                         l
                     }
                     Err(e) => {
-                        if is_api_server {
+                        if config.is_api_server {
                             eprintln!("[API ERROR] ✗ Failed to bind {}: {}", new_addr, e);
                             eprintln!("[API ERROR] API server will continue on old address: {}", old_addr);
                         } else {
@@ -207,7 +224,7 @@ async fn start_server_loop(
                 };
                 
                 // Log restart info
-                if is_api_server {
+                if config.is_api_server {
                     println!("[API RESTART] Starting new server loop on {}", new_addr);
                     if same_addr {
                         println!("[API RESTART] Force restart on same address: {}", new_addr);
@@ -238,7 +255,7 @@ async fn start_server_loop(
                 listener = new_listener;
                 
                 // Log success
-                if is_api_server {
+                if config.is_api_server {
                     println!("[API RESTART] ✓ Listener switched successfully");
                     println!("[API RESTART] ========== API Server Now Running on {} ==========", new_addr);
                     println!("[API RESTART] Old address {} is being drained and will close soon\n", old_addr);
@@ -277,10 +294,6 @@ fn accept_connection(
 ) {
     // Increment counter first, then check limit (prevents race condition)
     let prev_count = conn_counter.fetch_add(1, Ordering::SeqCst);
-    eprintln!(
-        "[DEBUG] prev_count connections: {}",
-        prev_count
-    );
     
     // Check connection limit if requested
     if check_limits {
