@@ -77,6 +77,8 @@ pub async fn drain_old_listener(
 
     // Close old listener immediately
     // Note: Active connections will continue processing in background tasks
+    // The explicit drop() here documents the intentional resource release point,
+    // even though the listener would be dropped at function end anyway.
     println!("[RESTART] Closing old listener (active connections will finish naturally)");
     drop(old_listener);
     println!("[RESTART] ✓ Old listener closed and resources released");

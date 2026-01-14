@@ -26,26 +26,29 @@ pub async fn update_listener(
         .map_err(|e| format!("Invalid listener resource: {e}"))?;
 
     let (port_changed, api_port_changed) = {
-        let mut config = state.dynamic_config.write().await;
         let mut port_changed = false;
         let mut api_port_changed = false;
 
-        if let Some(main) = &update.main_server {
-            if config.server.host != main.host || config.server.port != main.port {
-                port_changed = true;
-                config.server.host.clone_from(&main.host);
-                config.server.port = main.port;
-            }
-        }
+        {
+            let mut config = state.dynamic_config.write().await;
 
-        if let Some(api) = &update.api_server {
-            if config.server.api_host != api.host || config.server.api_port != api.port {
-                api_port_changed = true;
-                config.server.api_host.clone_from(&api.host);
-                config.server.api_port = api.port;
+            if let Some(main) = &update.main_server {
+                if config.server.host != main.host || config.server.port != main.port {
+                    port_changed = true;
+                    config.server.host.clone_from(&main.host);
+                    config.server.port = main.port;
+                }
             }
+
+            if let Some(api) = &update.api_server {
+                if config.server.api_host != api.host || config.server.api_port != api.port {
+                    api_port_changed = true;
+                    config.server.api_host.clone_from(&api.host);
+                    config.server.api_port = api.port;
+                }
+            }
+            // Write lock released here at end of scope
         }
-        drop(config);
 
         (port_changed, api_port_changed)
     };

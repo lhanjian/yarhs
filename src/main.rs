@@ -28,6 +28,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     runtime.block_on(async_main(cfg))
 }
 
+// Allow `future_not_send`: This function uses `LocalSet::run_until()` which doesn't
+// require Send futures. Clippy warns because the Future holds non-Send types across
+// await points, but since we run via `block_on()` (not `spawn()`), Send is not required.
 #[allow(clippy::similar_names, clippy::future_not_send)]
 async fn async_main(cfg: config::Config) -> Result<(), Box<dyn std::error::Error>> {
     let app_addr = cfg.get_socket_addr()?;
@@ -39,6 +42,14 @@ async fn async_main(cfg: config::Config) -> Result<(), Box<dyn std::error::Error
     let state = Arc::new(config::AppState::new(&cfg));
     let app_connections = Arc::new(AtomicUsize::new(0));
     let api_connections = Arc::new(AtomicUsize::new(0));
+
+    // Initialize signal handler (nginx-style)
+    let signal_handler = Arc::new(server::SignalHandler::new());
+    server::start_signal_handler(
+        Arc::clone(&signal_handler),
+        Arc::clone(&state.restart_signal),
+        Arc::clone(&state.api_restart_signal),
+    );
 
     logger::log_server_start(&app_addr, &cfg);
     println!("[API] Management API running on: http://{api_addr}");
@@ -67,20 +78,26 @@ async fn async_main(cfg: config::Config) -> Result<(), Box<dyn std::error::Error
             state,
             app_connections,
             api_connections,
+            signal_handler,
         ))
         .await
 }
 
-#[allow(clippy::similar_names)]
+// Allow `future_not_send`: This function is called within `LocalSet::run_until()`,
+// which executes futures on the current thread without requiring Send. The internal
+// `spawn_local()` also doesn't require Send. Clippy's warning is a false positive here.
+#[allow(clippy::similar_names, clippy::future_not_send)]
 async fn run_dual_servers(
     app_listener: TcpListener,
     api_listener: TcpListener,
     state: Arc<config::AppState>,
     app_connections: Arc<AtomicUsize>,
     api_connections: Arc<AtomicUsize>,
+    signal_handler: Arc<server::SignalHandler>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let state_clone = state.clone();
     let api_connections_clone = api_connections.clone();
+    let shutdown_clone = Arc::clone(&signal_handler.shutdown);
 
     // Spawn API server task
     tokio::task::spawn_local(async move {
@@ -89,7 +106,7 @@ async fn run_dual_servers(
         }
     });
 
-    // Run app server in main task
+    // Run app server in main task with shutdown support
     let restart_signal = Arc::clone(&state.restart_signal);
     let config = server::ServerLoopConfig {
         is_api_server: false,
@@ -98,7 +115,55 @@ async fn run_dual_servers(
         get_new_addr: |config| format!("{}:{}", config.host, config.port),
         log_prefix: "",
     };
-    server::start_server_loop(app_listener, state, app_connections, config).await
+
+    // Race between server loop and shutdown signal
+    tokio::select! {
+        result = server::start_server_loop(app_listener, state.clone(), app_connections.clone(), config) => {
+            result
+        }
+        () = shutdown_clone.notified() => {
+            println!("[SHUTDOWN] Main server received shutdown signal");
+            graceful_shutdown(state, app_connections).await;
+            Ok(())
+        }
+    }
+}
+
+/// Graceful shutdown - wait for active connections to complete
+async fn graceful_shutdown(state: Arc<config::AppState>, conn_counter: Arc<AtomicUsize>) {
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+
+    println!("[SHUTDOWN] ========== Graceful Shutdown Started ==========");
+
+    let timeout = Duration::from_secs(
+        state
+            .config
+            .performance
+            .read_timeout
+            .max(state.config.performance.write_timeout),
+    );
+    let start = std::time::Instant::now();
+
+    // Wait for connections to drain (with timeout)
+    loop {
+        let active = conn_counter.load(Ordering::Relaxed);
+        if active == 0 {
+            println!("[SHUTDOWN] All connections closed");
+            break;
+        }
+
+        if start.elapsed() > timeout {
+            println!("[SHUTDOWN] Timeout reached, {active} connections still active");
+            println!("[SHUTDOWN] Forcing shutdown...");
+            break;
+        }
+
+        println!("[SHUTDOWN] Waiting for {active} active connections...");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
+    println!("[SHUTDOWN] ========== Server Stopped ==========");
 }
 
 async fn run_api_server(

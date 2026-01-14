@@ -56,11 +56,6 @@ pub fn log_api_request(method: &str, path: &str, status: u16) {
     println!("[API] {method} {path} - {status}");
 }
 
-#[allow(dead_code)]
-pub fn log_config_updated() {
-    println!("[Config] Dynamic configuration updated");
-}
-
 pub fn log_restart_triggered() {
     println!("\n[Restart] Server restart triggered");
 }
@@ -76,14 +71,4 @@ pub fn log_new_listener_bound(addr: &std::net::SocketAddr) {
 pub fn log_bind_failed(addr: &std::net::SocketAddr, err: &std::io::Error) {
     log_error(&format!("[Step 1] ✗ Failed to bind {addr}: {err}"));
     eprintln!("         Continuing with current configuration");
-}
-
-#[allow(dead_code)]
-pub fn log_server_config_change(
-    old: &crate::config::DynamicServerConfig,
-    new: &crate::config::DynamicServerConfig,
-) {
-    println!("[Config] Server configuration change detected:");
-    println!("  Old: {}:{}", old.host, old.port);
-    println!("  New: {}:{}", new.host, new.port);
 }

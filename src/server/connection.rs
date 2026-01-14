@@ -40,11 +40,11 @@ pub fn accept_connection(
         if let Some(max_conn) = state.config.performance.max_connections {
             if prev_count >= usize::try_from(max_conn).unwrap_or(usize::MAX) {
                 // Exceeded limit: rollback counter and reject
+                // Note: stream is automatically dropped when function returns
                 conn_counter.fetch_sub(1, Ordering::SeqCst);
                 logger::log_warning(&format!(
                     "Max connections reached: {prev_count}/{max_conn}. Connection rejected."
                 ));
-                drop(stream);
                 return;
             }
         }

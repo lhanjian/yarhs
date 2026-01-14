@@ -8,26 +8,6 @@ use std::collections::HashMap;
 // ============== xDS API Types ==============
 
 /// xDS Discovery Request - sent by client
-/// (Reserved for future streaming subscription feature)
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-pub struct DiscoveryRequest {
-    /// Version known by client, empty means first request
-    #[serde(default)]
-    pub version_info: String,
-    /// Nonce from last response, used for ACK/NACK
-    #[serde(default)]
-    pub response_nonce: String,
-    /// Requested resource type
-    #[serde(default)]
-    pub type_url: String,
-    /// List of specific resource names (empty means all)
-    #[serde(default)]
-    pub resource_names: Vec<String>,
-    /// Error details (for NACK)
-    #[serde(default)]
-    pub error_detail: Option<ErrorDetail>,
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ErrorDetail {
