@@ -2,18 +2,12 @@
 // Request/response types for xDS Discovery API
 
 use crate::config::{DynamicPerformanceConfig, HttpConfig, LoggingConfig, RouteHandler};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashMap;
 
 // ============== xDS API Types ==============
 
 /// xDS Discovery Request - sent by client
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ErrorDetail {
-    pub code: i32,
-    pub message: String,
-}
 
 /// xDS Discovery Response - returned by server
 #[derive(Debug, Serialize)]
