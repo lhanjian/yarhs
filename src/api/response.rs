@@ -1,15 +1,18 @@
-// API 响应工具函数模块
+// API response utility functions module
 
-use std::convert::Infallible;
+use crate::logger;
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::{Response, StatusCode};
 use serde::Serialize;
-use crate::logger;
+use std::convert::Infallible;
 
-/// 构建 JSON 响应
+/// Build JSON response
 #[allow(clippy::unnecessary_wraps)]
-pub fn json_response<T: Serialize>(status: StatusCode, body: &T) -> Result<Response<Full<Bytes>>, Infallible> {
+pub fn json_response<T: Serialize>(
+    status: StatusCode,
+    body: &T,
+) -> Result<Response<Full<Bytes>>, Infallible> {
     let json = match serde_json::to_string_pretty(body) {
         Ok(j) => j,
         Err(e) => {
@@ -17,7 +20,9 @@ pub fn json_response<T: Serialize>(status: StatusCode, body: &T) -> Result<Respo
             return Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error":"Internal server error"}"#)))
+                .body(Full::new(Bytes::from(
+                    r#"{"error":"Internal server error"}"#,
+                )))
                 .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Error")))));
         }
     };
@@ -32,7 +37,7 @@ pub fn json_response<T: Serialize>(status: StatusCode, body: &T) -> Result<Respo
         }))
 }
 
-/// 404 Not Found 响应
+/// 404 Not Found response
 pub fn not_found() -> Response<Full<Bytes>> {
     Response::builder()
         .status(StatusCode::NOT_FOUND)
@@ -41,7 +46,7 @@ pub fn not_found() -> Response<Full<Bytes>> {
         .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Not Found"))))
 }
 
-/// 400 Bad Request 响应
+/// 400 Bad Request response
 pub fn bad_request(message: &str) -> Response<Full<Bytes>> {
     let body = serde_json::json!({
         "status": "NACK",
@@ -57,7 +62,7 @@ pub fn bad_request(message: &str) -> Response<Full<Bytes>> {
         .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Bad Request"))))
 }
 
-/// 409 Conflict 响应
+/// 409 Conflict response
 pub fn conflict_response(message: &str) -> Response<Full<Bytes>> {
     let body = serde_json::json!({
         "status": "NACK",

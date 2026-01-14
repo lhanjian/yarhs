@@ -1,11 +1,11 @@
-// 配置类型定义模块
-// 定义所有配置相关的数据结构
+// Configuration types module
+// Defines all configuration-related data structures
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// 主配置结构
+/// Main configuration structure
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub server: ServerConfig,
@@ -15,7 +15,7 @@ pub struct Config {
     pub routes: RoutesConfig,
 }
 
-/// 动态配置 - 可在运行时修改
+/// Dynamic configuration - can be modified at runtime
 #[derive(Debug, Clone)]
 pub struct DynamicConfig {
     pub server: DynamicServerConfig,
@@ -25,7 +25,7 @@ pub struct DynamicConfig {
     pub performance: DynamicPerformanceConfig,
 }
 
-/// 动态性能配置
+/// Dynamic performance configuration
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DynamicPerformanceConfig {
     pub keep_alive_timeout: u64,
@@ -34,7 +34,7 @@ pub struct DynamicPerformanceConfig {
     pub max_connections: Option<u64>,
 }
 
-/// 路由配置
+/// Routes configuration
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RoutesConfig {
     pub favicon_paths: Vec<String>,
@@ -42,7 +42,7 @@ pub struct RoutesConfig {
     pub custom_routes: HashMap<String, RouteHandler>,
 }
 
-/// 路由处理器类型
+/// Route handler types
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RouteHandler {
@@ -61,7 +61,7 @@ impl Default for RoutesConfig {
     }
 }
 
-/// 动态服务器配置 - 可触发重启
+/// Dynamic server configuration - may trigger restart
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct DynamicServerConfig {
     pub host: String,
@@ -70,7 +70,7 @@ pub struct DynamicServerConfig {
     pub api_port: u16,
 }
 
-/// 服务器配置
+/// Server configuration
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
     pub host: String,
@@ -80,7 +80,7 @@ pub struct ServerConfig {
     pub workers: Option<usize>,
 }
 
-/// 日志配置
+/// Logging configuration
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct LoggingConfig {
     pub level: String,
@@ -88,7 +88,7 @@ pub struct LoggingConfig {
     pub show_headers: bool,
 }
 
-/// 性能配置
+/// Performance configuration
 #[derive(Debug, Deserialize, Clone)]
 pub struct PerformanceConfig {
     pub keep_alive_timeout: u64,
@@ -97,7 +97,7 @@ pub struct PerformanceConfig {
     pub max_connections: Option<u64>,
 }
 
-/// HTTP 配置
+/// HTTP configuration
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct HttpConfig {
     pub default_content_type: String,

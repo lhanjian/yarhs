@@ -1,30 +1,30 @@
-// API 类型定义模块
-// xDS Discovery API 的请求/响应类型
+// API types module
+// Request/response types for xDS Discovery API
 
+use crate::config::{DynamicPerformanceConfig, HttpConfig, LoggingConfig, RouteHandler};
 use serde::{Deserialize, Serialize};
-use crate::config::{HttpConfig, LoggingConfig, DynamicPerformanceConfig, RouteHandler};
 use std::collections::HashMap;
 
 // ============== xDS API Types ==============
 
-/// xDS Discovery Request - 客户端发送的请求
-/// (预留用于未来的流式订阅功能)
+/// xDS Discovery Request - sent by client
+/// (Reserved for future streaming subscription feature)
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct DiscoveryRequest {
-    /// 客户端已知的版本号，空表示首次请求
+    /// Version known by client, empty means first request
     #[serde(default)]
     pub version_info: String,
-    /// 上次响应的 nonce，用于 ACK/NACK
+    /// Nonce from last response, used for ACK/NACK
     #[serde(default)]
     pub response_nonce: String,
-    /// 请求的资源类型
+    /// Requested resource type
     #[serde(default)]
     pub type_url: String,
-    /// 请求的具体资源名称列表（空表示所有）
+    /// List of specific resource names (empty means all)
     #[serde(default)]
     pub resource_names: Vec<String>,
-    /// 错误详情（用于 NACK）
+    /// Error details (for NACK)
     #[serde(default)]
     pub error_detail: Option<ErrorDetail>,
 }
@@ -35,33 +35,33 @@ pub struct ErrorDetail {
     pub message: String,
 }
 
-/// xDS Discovery Response - 服务端返回的响应
+/// xDS Discovery Response - returned by server
 #[derive(Debug, Serialize)]
 pub struct DiscoveryResponse {
-    /// 资源版本号
+    /// Resource version
     pub version_info: String,
-    /// 资源列表
+    /// Resource list
     pub resources: Vec<Resource>,
-    /// 响应 nonce，客户端需要在下次请求中回传
+    /// Response nonce, client must return in next request
     pub nonce: String,
-    /// 资源类型 URL
+    /// Resource type URL
     pub type_url: String,
 }
 
-/// 通用资源包装器
+/// Generic resource wrapper
 #[derive(Debug, Serialize)]
 pub struct Resource {
-    /// 资源类型
+    /// Resource type
     #[serde(rename = "@type")]
     pub type_url: String,
-    /// 资源名称
+    /// Resource name
     pub name: String,
-    /// 资源内容
+    /// Resource content
     #[serde(flatten)]
     pub value: serde_json::Value,
 }
 
-/// 所有资源的快照响应
+/// Snapshot response of all resources
 #[derive(Debug, Serialize)]
 pub struct SnapshotResponse {
     pub version_info: String,

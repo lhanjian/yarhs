@@ -1,6 +1,6 @@
-use std::net::SocketAddr;
-use hyper::{Method, Uri, Version};
 use crate::config::Config;
+use hyper::{Method, Uri, Version};
+use std::net::SocketAddr;
 
 pub fn log_server_start(addr: &SocketAddr, config: &Config) {
     println!("======================================");
@@ -79,7 +79,10 @@ pub fn log_bind_failed(addr: &std::net::SocketAddr, err: &std::io::Error) {
 }
 
 #[allow(dead_code)]
-pub fn log_server_config_change(old: &crate::config::DynamicServerConfig, new: &crate::config::DynamicServerConfig) {
+pub fn log_server_config_change(
+    old: &crate::config::DynamicServerConfig,
+    new: &crate::config::DynamicServerConfig,
+) {
     println!("[Config] Server configuration change detected:");
     println!("  Old: {}:{}", old.host, old.port);
     println!("  New: {}:{}", new.host, new.port);

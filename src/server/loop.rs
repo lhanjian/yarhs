@@ -1,15 +1,15 @@
-// 服务器循环模块
-// 统一的服务器主循环，处理连接接受和热重启
+// Server loop module
+// Unified server main loop, handles connection acceptance and hot restart
 
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 
-use crate::config;
-use crate::logger;
 use super::connection::accept_connection;
 use super::listener::create_reusable_listener;
 use super::restart::drain_old_listener;
+use crate::config;
+use crate::logger;
 
 /// Configuration for server loop behavior
 pub struct ServerLoopConfig<F>
@@ -24,7 +24,7 @@ where
 }
 
 /// Unified server loop that handles both main and API servers
-/// 
+///
 /// This function consolidates the common logic between main server and API server loops,
 /// reducing code duplication and improving maintainability.
 #[allow(clippy::too_many_lines, clippy::ignored_unit_patterns)]
@@ -61,14 +61,14 @@ where
                     }
                 }
             }
-            
+
             _ = config.restart_signal.notified() => {
                 if config.is_api_server {
                     println!("[API RESTART] ========== API Restart Signal Received ==========");
                 } else {
                     logger::log_restart_triggered();
                 }
-                
+
                 let new_config = {
                     let config = state.new_server_config.read().await;
                     if let Some(c) = config.as_ref() { c.clone() } else {
@@ -76,20 +76,20 @@ where
                         continue;
                     }
                 };
-                
+
                 let old_addr = listener.local_addr()?;
                 let new_addr_str = (config.get_new_addr)(&new_config);
                 let new_addr = new_addr_str.parse::<std::net::SocketAddr>()?;
-                
+
                 if config.is_api_server {
                     println!("[API RESTART] Current address: {old_addr}");
                     println!("[API RESTART] New address: {new_addr}");
                 } else {
                     logger::log_binding_new_address(&new_addr);
                 }
-                
+
                 let same_addr = old_addr == new_addr;
-                    
+
                 // Bind new listener
                 let new_listener = match create_reusable_listener(new_addr) {
                     Ok(l) => {
@@ -112,7 +112,7 @@ where
                         continue;
                     }
                 };
-                
+
                 // Log restart info
                 if config.is_api_server {
                     println!("[API RESTART] Starting new server loop on {new_addr}");
@@ -131,19 +131,19 @@ where
                         println!("[RESTART] Old listener will drain backlog for 100ms");
                     }
                 }
-                
+
                 // Drain old listener
                 let old_listener = listener;
                 let old_state = Arc::clone(&state);
                 let old_counter = Arc::clone(&active_connections);
-                
+
                 tokio::task::spawn_local(async move {
                     drain_old_listener(old_listener, old_state, old_counter).await;
                 });
-                
+
                 // Switch to new listener
                 listener = new_listener;
-                
+
                 // Log success
                 if config.is_api_server {
                     println!("[API RESTART] ✓ Listener switched successfully");

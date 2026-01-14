@@ -1,5 +1,5 @@
-// 配置模块入口
-// 管理应用配置、运行时状态和版本控制
+// Configuration module entry point
+// Manages application configuration, runtime state, and version control
 
 mod state;
 mod types;
@@ -8,11 +8,11 @@ mod version;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-// 重新导出公共类型
+// Re-export public types
 pub use state::AppState;
 pub use types::{
-    Config, DynamicConfig, DynamicPerformanceConfig, DynamicServerConfig,
-    HttpConfig, LoggingConfig, RouteHandler, RoutesConfig,
+    Config, DynamicConfig, DynamicPerformanceConfig, DynamicServerConfig, HttpConfig,
+    LoggingConfig, RouteHandler, RoutesConfig,
 };
 pub use version::ResourceType;
 
@@ -34,7 +34,7 @@ impl Config {
             .set_default("http.default_content_type", "text/html; charset=utf-8")?
             .set_default("http.server_name", "Tokio-Hyper/1.0")?
             .set_default("http.enable_cors", false)?
-            .set_default("http.max_body_size", 10_485_760)?  // 10MB
+            .set_default("http.max_body_size", 10_485_760)? // 10MB
             .build()?;
 
         settings.try_deserialize()
@@ -45,7 +45,7 @@ impl Config {
             .parse()
             .map_err(|e| format!("Invalid address: {e}"))
     }
-    
+
     pub fn get_api_socket_addr(&self) -> Result<SocketAddr, String> {
         format!("{}:{}", self.server.api_host, self.server.api_port)
             .parse()

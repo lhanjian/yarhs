@@ -1,12 +1,12 @@
+use crate::config::HttpConfig;
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::Response;
-use tokio::fs;
-use std::path::Path;
-use std::sync::Arc;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use crate::config::HttpConfig;
+use std::path::Path;
+use std::sync::Arc;
+use tokio::fs;
 
 const FAVICON_PATH: &str = "static/favicon.svg";
 
@@ -22,7 +22,9 @@ pub fn generate_etag(content: &[u8]) -> String {
 pub fn check_etag_match(if_none_match: Option<&str>, etag: &str) -> bool {
     if_none_match.is_some_and(|client_etag| {
         // Handle multiple ETags separated by comma
-        client_etag.split(',').any(|e| e.trim() == etag || e.trim() == "*")
+        client_etag
+            .split(',')
+            .any(|e| e.trim() == etag || e.trim() == "*")
     })
 }
 
@@ -48,21 +50,22 @@ pub async fn load_static_file(
 ) -> Option<(Vec<u8>, &'static str)> {
     // Remove leading slash and prevent directory traversal
     let clean_path = path.trim_start_matches('/').replace("..", "");
-    
+
     // Remove route prefix from path
     let prefix_clean = route_prefix.trim_matches('/');
     let relative_path = if prefix_clean.is_empty() {
         clean_path.as_str()
     } else {
-        clean_path.strip_prefix(&format!("{prefix_clean}/"))
+        clean_path
+            .strip_prefix(&format!("{prefix_clean}/"))
             .unwrap_or(&clean_path)
     };
-    
+
     let mut file_path = Path::new(static_dir).join(relative_path);
-    
+
     // Security: ensure file_path is within static_dir
     let static_dir_canonical = Path::new(static_dir).canonicalize().ok()?;
-    
+
     // Check if path is a directory, try index files
     if file_path.is_dir() || relative_path.is_empty() || relative_path.ends_with('/') {
         for index_file in index_files {
@@ -73,14 +76,14 @@ pub async fn load_static_file(
             }
         }
     }
-    
+
     let file_path_canonical = file_path.canonicalize().ok()?;
     if !file_path_canonical.starts_with(&static_dir_canonical) {
         return None;
     }
-    
+
     let content = fs::read(&file_path).await.ok()?;
-    
+
     // Determine content type from extension
     let content_type = match file_path.extension()?.to_str()? {
         "html" | "htm" => "text/html; charset=utf-8",
@@ -94,7 +97,7 @@ pub async fn load_static_file(
         "txt" => "text/plain",
         _ => "application/octet-stream",
     };
-    
+
     Some((content, content_type))
 }
 
@@ -102,7 +105,7 @@ pub async fn load_static_file(
 pub async fn load_single_file(file_path: &str) -> Option<(Vec<u8>, &'static str)> {
     let path = Path::new(file_path);
     let content = fs::read(path).await.ok()?;
-    
+
     // Determine content type from extension
     let content_type = match path.extension().and_then(|e| e.to_str()) {
         Some("html" | "htm") => "text/html; charset=utf-8",
@@ -127,7 +130,7 @@ pub async fn load_single_file(file_path: &str) -> Option<(Vec<u8>, &'static str)
         Some("wav") => "audio/wav",
         _ => "application/octet-stream",
     };
-    
+
     Some((content, content_type))
 }
 
@@ -225,13 +228,13 @@ pub fn get_default_homepage() -> String {
         <div class="emoji">🚀</div>
         <h1>YARHS</h1>
         <p><strong>Yet Another Rust HTTP Server</strong></p>
-        <p>高性能异步 Web 服务器</p>
+        <p>High-performance asynchronous Web server</p>
         
         <ul class="features">
-            <li>动态路由配置</li>
-            <li>零停机热重启</li>
-            <li>高性能异步 I/O</li>
-            <li>智能缓存系统</li>
+            <li>Dynamic route configuration</li>
+            <li>Zero-downtime hot restart</li>
+            <li>High-performance async I/O</li>
+            <li>Smart caching system</li>
         </ul>
         
         <div class="footer">
@@ -239,7 +242,7 @@ pub fn get_default_homepage() -> String {
         </div>
     </div>
 </body>
-</html>"#
+</html>"#,
     )
 }
 
@@ -248,11 +251,11 @@ pub fn build_html_response(html: String, http_config: &Arc<HttpConfig>) -> Respo
         .status(200)
         .header("Content-Type", &http_config.default_content_type)
         .header("Server", &http_config.server_name);
-    
+
     if http_config.enable_cors {
         builder = builder.header("Access-Control-Allow-Origin", "*");
     }
-    
+
     builder
         .body(Full::new(Bytes::from(html)))
         .unwrap_or_else(|e| {
@@ -268,11 +271,11 @@ pub async fn load_favicon() -> Option<Vec<u8>> {
 /// Build favicon response with `ETag` conditional check
 pub fn build_favicon_response(data: Vec<u8>, if_none_match: Option<&str>) -> Response<Full<Bytes>> {
     let etag = generate_etag(&data);
-    
+
     if check_etag_match(if_none_match, &etag) {
         return build_304_response(&etag);
     }
-    
+
     Response::builder()
         .status(200)
         .header("Content-Type", "image/svg+xml")
@@ -314,12 +317,12 @@ pub fn build_static_file_response(
     if_none_match: Option<&str>,
 ) -> Response<Full<Bytes>> {
     let etag = generate_etag(&data);
-    
+
     // Check if client has cached version
     if check_etag_match(if_none_match, &etag) {
         return build_304_response(&etag);
     }
-    
+
     Response::builder()
         .status(200)
         .header("Content-Type", content_type)
