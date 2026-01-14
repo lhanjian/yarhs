@@ -4,22 +4,76 @@ use hyper::Response;
 use tokio::fs;
 use std::path::Path;
 use std::sync::Arc;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use crate::config::HttpConfig;
 
 const FAVICON_PATH: &str = "static/favicon.svg";
 
-// Serve static files from static_dir
-pub async fn load_static_file(static_dir: &str, path: &str, route_prefix: &str) -> Option<(Vec<u8>, &'static str)> {
+/// Generate `ETag` from content using fast hash
+pub fn generate_etag(content: &[u8]) -> String {
+    let mut hasher = DefaultHasher::new();
+    content.hash(&mut hasher);
+    let v = hasher.finish();
+    format!("\"{v:x}\"")
+}
+
+/// Check if client's `If-None-Match` header matches our `ETag`
+pub fn check_etag_match(if_none_match: Option<&str>, etag: &str) -> bool {
+    if_none_match.is_some_and(|client_etag| {
+        // Handle multiple ETags separated by comma
+        client_etag.split(',').any(|e| e.trim() == etag || e.trim() == "*")
+    })
+}
+
+/// Build 304 Not Modified response
+pub fn build_304_response(etag: &str) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(304)
+        .header("ETag", etag)
+        .header("Cache-Control", "public, max-age=3600")
+        .body(Full::new(Bytes::new()))
+        .unwrap_or_else(|e| {
+            crate::logger::log_error(&format!("Failed to build 304 response: {e}"));
+            Response::new(Full::new(Bytes::new()))
+        })
+}
+
+// Serve static files from static_dir with index file support
+pub async fn load_static_file(
+    static_dir: &str,
+    path: &str,
+    route_prefix: &str,
+    index_files: &[String],
+) -> Option<(Vec<u8>, &'static str)> {
     // Remove leading slash and prevent directory traversal
     let clean_path = path.trim_start_matches('/').replace("..", "");
     
-    // Remove route prefix from path (e.g., "static" from "/static/file.css")
-    let relative_path = clean_path.strip_prefix(&format!("{}/", route_prefix.trim_matches('/')))
-        .unwrap_or(&clean_path);
-    let file_path = Path::new(static_dir).join(relative_path);
+    // Remove route prefix from path
+    let prefix_clean = route_prefix.trim_matches('/');
+    let relative_path = if prefix_clean.is_empty() {
+        clean_path.as_str()
+    } else {
+        clean_path.strip_prefix(&format!("{prefix_clean}/"))
+            .unwrap_or(&clean_path)
+    };
+    
+    let mut file_path = Path::new(static_dir).join(relative_path);
     
     // Security: ensure file_path is within static_dir
     let static_dir_canonical = Path::new(static_dir).canonicalize().ok()?;
+    
+    // Check if path is a directory, try index files
+    if file_path.is_dir() || relative_path.is_empty() || relative_path.ends_with('/') {
+        for index_file in index_files {
+            let index_path = file_path.join(index_file);
+            if index_path.exists() && index_path.is_file() {
+                file_path = index_path;
+                break;
+            }
+        }
+    }
+    
     let file_path_canonical = file_path.canonicalize().ok()?;
     if !file_path_canonical.starts_with(&static_dir_canonical) {
         return None;
@@ -44,6 +98,40 @@ pub async fn load_static_file(static_dir: &str, path: &str, route_prefix: &str) 
     Some((content, content_type))
 }
 
+// Load a single file and determine its content type
+pub async fn load_single_file(file_path: &str) -> Option<(Vec<u8>, &'static str)> {
+    let path = Path::new(file_path);
+    let content = fs::read(path).await.ok()?;
+    
+    // Determine content type from extension
+    let content_type = match path.extension().and_then(|e| e.to_str()) {
+        Some("html" | "htm") => "text/html; charset=utf-8",
+        Some("css") => "text/css",
+        Some("js") => "application/javascript",
+        Some("json") => "application/json",
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("txt" | "md") => "text/plain; charset=utf-8",
+        Some("xml") => "application/xml",
+        Some("pdf") => "application/pdf",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        Some("ttf") => "font/ttf",
+        Some("ico") => "image/x-icon",
+        Some("webp") => "image/webp",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        _ => "application/octet-stream",
+    };
+    
+    Some((content, content_type))
+}
+
+#[allow(clippy::too_many_lines)]
 pub fn get_default_homepage() -> String {
     String::from(
         r#"<!DOCTYPE html>
@@ -155,7 +243,7 @@ pub fn get_default_homepage() -> String {
     )
 }
 
-pub fn build_html_response(html: String, http_config: Arc<HttpConfig>) -> Response<Full<Bytes>> {
+pub fn build_html_response(html: String, http_config: &Arc<HttpConfig>) -> Response<Full<Bytes>> {
     let mut builder = Response::builder()
         .status(200)
         .header("Content-Type", &http_config.default_content_type)
@@ -168,7 +256,7 @@ pub fn build_html_response(html: String, http_config: Arc<HttpConfig>) -> Respon
     builder
         .body(Full::new(Bytes::from(html)))
         .unwrap_or_else(|e| {
-            crate::logger::log_error(&format!("Failed to build HTML response: {}", e));
+            crate::logger::log_error(&format!("Failed to build HTML response: {e}"));
             Response::new(Full::new(Bytes::from("Internal Server Error")))
         })
 }
@@ -177,14 +265,22 @@ pub async fn load_favicon() -> Option<Vec<u8>> {
     fs::read(FAVICON_PATH).await.ok()
 }
 
-pub fn build_favicon_response(data: Vec<u8>) -> Response<Full<Bytes>> {
+/// Build favicon response with `ETag` conditional check
+pub fn build_favicon_response(data: Vec<u8>, if_none_match: Option<&str>) -> Response<Full<Bytes>> {
+    let etag = generate_etag(&data);
+    
+    if check_etag_match(if_none_match, &etag) {
+        return build_304_response(&etag);
+    }
+    
     Response::builder()
         .status(200)
         .header("Content-Type", "image/svg+xml")
+        .header("ETag", etag)
         .header("Cache-Control", "public, max-age=86400")
         .body(Full::new(Bytes::from(data)))
         .unwrap_or_else(|e| {
-            crate::logger::log_error(&format!("Failed to build favicon response: {}", e));
+            crate::logger::log_error(&format!("Failed to build favicon response: {e}"));
             Response::new(Full::new(Bytes::new()))
         })
 }
@@ -195,7 +291,7 @@ pub fn build_404_response() -> Response<Full<Bytes>> {
         .header("Content-Type", "text/plain")
         .body(Full::new(Bytes::from("Not Found")))
         .unwrap_or_else(|e| {
-            crate::logger::log_error(&format!("Failed to build 404 response: {}", e));
+            crate::logger::log_error(&format!("Failed to build 404 response: {e}"));
             Response::new(Full::new(Bytes::from("Not Found")))
         })
 }
@@ -206,19 +302,32 @@ pub fn build_413_response() -> Response<Full<Bytes>> {
         .header("Content-Type", "text/plain")
         .body(Full::new(Bytes::from("Request Entity Too Large")))
         .unwrap_or_else(|e| {
-            crate::logger::log_error(&format!("Failed to build 413 response: {}", e));
+            crate::logger::log_error(&format!("Failed to build 413 response: {e}"));
             Response::new(Full::new(Bytes::from("Request Entity Too Large")))
         })
 }
 
-pub fn build_static_file_response(data: Vec<u8>, content_type: &str) -> Response<Full<Bytes>> {
+/// Build static file response with `ETag` support and conditional check
+pub fn build_static_file_response(
+    data: Vec<u8>,
+    content_type: &str,
+    if_none_match: Option<&str>,
+) -> Response<Full<Bytes>> {
+    let etag = generate_etag(&data);
+    
+    // Check if client has cached version
+    if check_etag_match(if_none_match, &etag) {
+        return build_304_response(&etag);
+    }
+    
     Response::builder()
         .status(200)
         .header("Content-Type", content_type)
+        .header("ETag", etag)
         .header("Cache-Control", "public, max-age=3600")
         .body(Full::new(Bytes::from(data)))
         .unwrap_or_else(|e| {
-            crate::logger::log_error(&format!("Failed to build static file response: {}", e));
+            crate::logger::log_error(&format!("Failed to build static file response: {e}"));
             Response::new(Full::new(Bytes::new()))
         })
 }
@@ -229,7 +338,7 @@ pub fn build_redirect_response(target: &str) -> Response<Full<Bytes>> {
         .header("Location", target)
         .body(Full::new(Bytes::from("")))
         .unwrap_or_else(|e| {
-            crate::logger::log_error(&format!("Failed to build redirect response: {}", e));
+            crate::logger::log_error(&format!("Failed to build redirect response: {e}"));
             Response::new(Full::new(Bytes::new()))
         })
 }

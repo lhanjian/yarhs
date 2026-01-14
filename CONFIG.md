@@ -20,28 +20,31 @@ SERVER_HTTP__ENABLE_CORS=true cargo run
 ### Server Configuration
 - `server.host` - Bind address (default: "127.0.0.1")
 - `server.port` - Listen port (default: 8080)
-- `server.workers` - Worker thread count (optional)
+- `server.api_host` - API server bind address (default: "0.0.0.0")
+- `server.api_port` - API management port (default: 8000)
+- `server.workers` - Worker thread count (optional, defaults to CPU cores)
 
 ### Logging Configuration
 - `logging.level` - Log verbosity: "debug", "info", "error" (default: "info")
 - `logging.access_log` - Enable access logging (default: true)
 - `logging.show_headers` - Show request headers (default: false)
 
-### Resources Configuration
-- `resources.template_dir` - Template directory path (default: "templates")
-- `resources.static_dir` - Static files directory (optional)
-- `resources.max_body_size` - Max request body size in bytes (default: 10485760)
-
 ### Performance Configuration
 - `performance.keep_alive_timeout` - Keep-alive timeout in seconds (default: 75)
 - `performance.read_timeout` - Read timeout in seconds (default: 30)
 - `performance.write_timeout` - Write timeout in seconds (default: 30)
-- `performance.max_connections` - Max concurrent connections (optional)
+- `performance.max_connections` - Max concurrent connections (default: 5000)
 
 ### HTTP Configuration
-- `http.default_content_type` - Default Content-Type header
+- `http.default_content_type` - Default Content-Type header (default: "text/html; charset=utf-8")
 - `http.server_name` - Server name header (default: "Tokio-Hyper/1.0")
 - `http.enable_cors` - Enable CORS headers (default: false)
+- `http.max_body_size` - Max request body size in bytes (default: 10485760)
+
+### Routes Configuration
+- `routes.favicon_paths` - Favicon URL paths (default: ["/favicon.ico", "/favicon.svg"])
+- `routes.index_files` - Default document filenames (default: ["index.html", "index.htm"])
+- `routes.custom_routes` - Custom route definitions (see [ROUTES.md](ROUTES.md))
 
 ## Examples
 
@@ -56,6 +59,7 @@ port = 3000
 [server]
 host = "0.0.0.0"
 port = 8080
+api_port = 8000
 
 [logging]
 level = "debug"
@@ -64,6 +68,9 @@ show_headers = true
 
 [http]
 enable_cors = true
+
+[routes.custom_routes]
+"/static" = { type = "dir", path = "static" }
 ```
 
 ### Production config
@@ -71,6 +78,8 @@ enable_cors = true
 [server]
 host = "0.0.0.0"
 port = 80
+api_host = "127.0.0.1"
+api_port = 8000
 
 [logging]
 level = "info"
@@ -79,4 +88,11 @@ access_log = false
 [performance]
 max_connections = 10000
 keep_alive_timeout = 60
+
+[routes]
+index_files = ["index.html"]
+
+[routes.custom_routes]
+"/assets" = { type = "dir", path = "public/assets" }
+"/about" = { type = "file", path = "pages/about.html" }
 ```

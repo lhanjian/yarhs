@@ -23,6 +23,12 @@ pub async fn handle_request(
         logger::log_request(method, uri, version);
     }
     
+    // Extract If-None-Match header for ETag validation
+    let if_none_match = req.headers()
+        .get("if-none-match")
+        .and_then(|v| v.to_str().ok())
+        .map(ToString::to_string);
+    
     // Read lightweight logging config only (avoid cloning heavy http_config)
     let show_headers = {
         let config = state.dynamic_config.read().await;
@@ -37,7 +43,7 @@ pub async fn handle_request(
         if let Ok(size_str) = content_length.to_str() {
             if let Ok(size) = size_str.parse::<u64>() {
                 if size > max_body_size {
-                    logger::log_error(&format!("Request body too large: {} bytes (max: {})", size, max_body_size));
+                    logger::log_error(&format!("Request body too large: {size} bytes (max: {max_body_size})"));
                     return Ok(response::build_413_response());
                 }
             }
@@ -55,27 +61,28 @@ pub async fn handle_request(
     let response = 
         // 1. Favicon routes
         if routes.favicon_paths.iter().any(|p| path == p) {
-            if let Some(favicon_data) = response::load_favicon().await {
-                let size = favicon_data.len();
-                if access_log {
-                    logger::log_response(size);
+            response::load_favicon().await.map_or_else(
+                response::build_404_response,
+                |favicon_data| {
+                    let size = favicon_data.len();
+                    if access_log {
+                        logger::log_response(size);
+                    }
+                    response::build_favicon_response(favicon_data, if_none_match.as_deref())
                 }
-                response::build_favicon_response(favicon_data)
-            } else {
-                response::build_404_response()
-            }
+            )
         }
-        // 3. Custom routes (exact match)
+        // 2. Custom routes (exact match)
         else if let Some(handler) = routes.custom_routes.get(path) {
-            handle_custom_route(path, handler, &state, access_log, path).await
+            handle_custom_route(path, handler, &state, access_log, path, &routes.index_files, if_none_match.as_deref()).await
         }
-        // 4. Check for prefix-based custom routes (e.g., /static/*)
+        // 3. Custom routes (prefix match, e.g., /static/*)
         else if let Some((prefix, handler)) = routes.custom_routes.iter()
             .find(|(prefix, _)| path.starts_with(prefix.as_str())) 
         {
-            handle_custom_route(path, handler, &state, access_log, prefix).await
+            handle_custom_route(path, handler, &state, access_log, prefix, &routes.index_files, if_none_match.as_deref()).await
         }
-        // 5. Default: Simple homepage
+        // 4. Default: homepage
         else {
             let http_config = {
                 let config = state.dynamic_config.read().await;
@@ -84,7 +91,7 @@ pub async fn handle_request(
             
             let html = response::get_default_homepage();
             let html_len = html.len();
-            let resp = response::build_html_response(html, http_config);
+            let resp = response::build_html_response(html, &http_config);
             
             if access_log {
                 logger::log_response(html_len);
@@ -98,35 +105,33 @@ pub async fn handle_request(
 async fn handle_custom_route(
     path: &str,
     handler: &RouteHandler,
-    state: &Arc<AppState>,
+    _state: &Arc<AppState>,
     access_log: bool,
-    route_prefix: &str,  // Add route prefix parameter
+    route_prefix: &str,
+    index_files: &[String],
+    if_none_match: Option<&str>,
 ) -> Response<Full<Bytes>> {
     match handler {
-        RouteHandler::Static { dir } => {
-            // Serve file from custom static directory
-            if let Some((content, content_type)) = response::load_static_file(dir, path, route_prefix).await {
+        RouteHandler::Dir { path: dir } => {
+            // Serve file from directory with index file support
+            if let Some((content, content_type)) = response::load_static_file(dir, path, route_prefix, index_files).await {
                 let size = content.len();
                 if access_log {
                     logger::log_response(size);
                 }
-                response::build_static_file_response(content, content_type)
+                response::build_static_file_response(content, content_type, if_none_match)
             } else {
                 response::build_404_response()
             }
         }
-        RouteHandler::Template { file } => {
-            // Load and serve HTML template
-            if let Ok(content) = tokio::fs::read_to_string(file).await {
-                let http_config = {
-                    let config = state.dynamic_config.read().await;
-                    Arc::clone(&config.http)
-                };
+        RouteHandler::File { path: file_path } => {
+            // Load and serve any file with appropriate content type
+            if let Some((content, content_type)) = response::load_single_file(file_path).await {
                 let size = content.len();
                 if access_log {
                     logger::log_response(size);
                 }
-                response::build_html_response(content, http_config)
+                response::build_static_file_response(content, content_type, if_none_match)
             } else {
                 response::build_404_response()
             }
