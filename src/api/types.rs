@@ -7,8 +7,6 @@ use std::collections::HashMap;
 
 // ============== xDS API Types ==============
 
-/// xDS Discovery Request - sent by client
-
 /// xDS Discovery Response - returned by server
 #[derive(Debug, Serialize)]
 pub struct DiscoveryResponse {
