@@ -9,8 +9,48 @@ mod logger;
 mod response;
 mod server;
 
+fn parse_args() -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    
+    // Check for help first
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("Usage: {} [OPTIONS]", args[0]);
+        println!();
+        println!("Options:");
+        println!("  -c, --config <PATH>  Path to config file (without .toml extension)");
+        println!("                       Default: config");
+        println!("  -h, --help           Show this help message");
+        std::process::exit(0);
+    }
+    
+    // Look for config option
+    for (i, arg) in args.iter().enumerate() {
+        if (arg == "--config" || arg == "-c") && i + 1 < args.len() {
+            return Some(args[i + 1].clone());
+        }
+        if let Some(value) = arg.strip_prefix("--config=") {
+            return Some(value.to_string());
+        }
+        if let Some(value) = arg.strip_prefix("-c=") {
+            return Some(value.to_string());
+        }
+    }
+    
+    // Check for unknown arguments (skip program name)
+    for arg in args.iter().skip(1) {
+        if arg.starts_with('-') && arg != "--config" && arg != "-c" {
+            eprintln!("Unknown argument: {arg}");
+            eprintln!("Use --help for usage information");
+            std::process::exit(1);
+        }
+    }
+    
+    None
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = config::Config::load()?;
+    let config_path = parse_args().unwrap_or_else(|| "config".to_string());
+    let cfg = config::Config::load_from(&config_path)?;
 
     // Create Tokio runtime, set thread count based on workers configuration
     let mut runtime_builder = tokio::runtime::Builder::new_multi_thread();

@@ -141,6 +141,7 @@ pub async fn handle_request(
     Ok(response)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_custom_route(
     path: &str,
     handler: &RouteHandler,

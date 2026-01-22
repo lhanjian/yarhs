@@ -17,9 +17,11 @@ pub use types::{
 pub use version::ResourceType;
 
 impl Config {
-    pub fn load() -> Result<Self, config::ConfigError> {
+    /// Load configuration from specified file path (without extension)
+    /// Default config file is "config.toml" when no path specified
+    pub fn load_from(config_path: &str) -> Result<Self, config::ConfigError> {
         let settings = config::Config::builder()
-            .add_source(config::File::with_name("config").required(false))
+            .add_source(config::File::with_name(config_path).required(false))
             .add_source(config::Environment::with_prefix("SERVER"))
             .set_default("server.host", "127.0.0.1")?
             .set_default("server.port", 8080)?

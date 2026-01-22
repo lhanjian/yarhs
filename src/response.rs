@@ -10,11 +10,44 @@ use tokio::fs;
 
 const FAVICON_PATH: &str = "static/favicon.svg";
 
+/// Get MIME content type from file extension
+fn get_content_type(extension: Option<&str>) -> &'static str {
+    match extension {
+        Some("html" | "htm") => "text/html; charset=utf-8",
+        Some("css") => "text/css",
+        Some("js" | "mjs") => "application/javascript",
+        Some("json") => "application/json",
+        Some("wasm") => "application/wasm",
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("txt" | "md") => "text/plain; charset=utf-8",
+        Some("xml") => "application/xml",
+        Some("pdf") => "application/pdf",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        Some("ttf") => "font/ttf",
+        Some("ico") => "image/x-icon",
+        Some("webp") => "image/webp",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("ogg" | "ogv") => "video/ogg",
+        Some("mov") => "video/quicktime",
+        Some("avi") => "video/x-msvideo",
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        Some("flac") => "audio/flac",
+        Some("m4a") => "audio/mp4",
+        _ => "application/octet-stream",
+    }
+}
+
 /// Parsed Range request
 #[derive(Debug, Clone)]
 pub struct RangeRequest {
-    pub start: u64,
-    pub end: Option<u64>, // None means "to end of file"
+    pub start: usize,
+    pub end: Option<usize>, // None means "to end of file"
 }
 
 /// Result of parsing Range header
@@ -22,7 +55,7 @@ pub struct RangeRequest {
 pub enum RangeParseResult {
     /// Valid range request
     Valid(RangeRequest),
-    /// Range is not satisfiable (start >= file_size) - should return 416
+    /// Range is not satisfiable (start >= `file_size`) - should return 416
     NotSatisfiable,
     /// No Range header or malformed (ignore, return full content)
     None,
@@ -30,7 +63,7 @@ pub enum RangeParseResult {
 
 /// Parse HTTP Range header (only supports single range, bytes unit)
 /// Format: "bytes=start-end" or "bytes=start-" or "bytes=-suffix"
-pub fn parse_range_header(range_header: Option<&str>, file_size: u64) -> RangeParseResult {
+pub fn parse_range_header(range_header: Option<&str>, file_size: usize) -> RangeParseResult {
     let Some(header) = range_header else {
         return RangeParseResult::None;
     };
@@ -53,7 +86,7 @@ pub fn parse_range_header(range_header: Option<&str>, file_size: u64) -> RangePa
     
     if start_str.is_empty() {
         // Suffix range: "-500" means last 500 bytes
-        let Ok(suffix) = end_str.parse::<u64>() else {
+        let Ok(suffix) = end_str.parse::<usize>() else {
             return RangeParseResult::None;
         };
         if suffix == 0 {
@@ -67,7 +100,7 @@ pub fn parse_range_header(range_header: Option<&str>, file_size: u64) -> RangePa
         });
     }
     
-    let Ok(start) = start_str.parse::<u64>() else {
+    let Ok(start) = start_str.parse::<usize>() else {
         return RangeParseResult::None;
     };
     
@@ -79,7 +112,7 @@ pub fn parse_range_header(range_header: Option<&str>, file_size: u64) -> RangePa
     let end = if end_str.is_empty() {
         None // Open-ended range
     } else {
-        let Ok(e) = end_str.parse::<u64>() else {
+        let Ok(e) = end_str.parse::<usize>() else {
             return RangeParseResult::None;
         };
         // Clamp end to file size - 1
@@ -197,19 +230,7 @@ pub async fn load_static_file(
     };
 
     // Determine content type from extension
-    let content_type = match file_path.extension()?.to_str()? {
-        "html" | "htm" => "text/html; charset=utf-8",
-        "css" => "text/css",
-        "js" | "mjs" => "application/javascript",
-        "json" => "application/json",
-        "wasm" => "application/wasm",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "svg" => "image/svg+xml",
-        "txt" => "text/plain",
-        _ => "application/octet-stream",
-    };
+    let content_type = get_content_type(file_path.extension().and_then(|e| e.to_str()));
 
     Some((content, content_type))
 }
@@ -220,30 +241,7 @@ pub async fn load_single_file(file_path: &str) -> Option<(Vec<u8>, &'static str)
     let content = fs::read(path).await.ok()?;
 
     // Determine content type from extension
-    let content_type = match path.extension().and_then(|e| e.to_str()) {
-        Some("html" | "htm") => "text/html; charset=utf-8",
-        Some("css") => "text/css",
-        Some("js" | "mjs") => "application/javascript",
-        Some("json") => "application/json",
-        Some("wasm") => "application/wasm",
-        Some("png") => "image/png",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("svg") => "image/svg+xml",
-        Some("txt" | "md") => "text/plain; charset=utf-8",
-        Some("xml") => "application/xml",
-        Some("pdf") => "application/pdf",
-        Some("woff") => "font/woff",
-        Some("woff2") => "font/woff2",
-        Some("ttf") => "font/ttf",
-        Some("ico") => "image/x-icon",
-        Some("webp") => "image/webp",
-        Some("mp4") => "video/mp4",
-        Some("webm") => "video/webm",
-        Some("mp3") => "audio/mpeg",
-        Some("wav") => "audio/wav",
-        _ => "application/octet-stream",
-    };
+    let content_type = get_content_type(path.extension().and_then(|e| e.to_str()));
 
     Some((content, content_type))
 }
@@ -457,10 +455,10 @@ pub fn build_static_file_response(
     }
 
     // Check for Range request
-    match parse_range_header(range_header, total_size as u64) {
+    match parse_range_header(range_header, total_size) {
         RangeParseResult::Valid(range) => {
-            let start = range.start as usize;
-            let end = range.end.map_or(total_size - 1, |e| e as usize);
+            let start = range.start;
+            let end = range.end.unwrap_or(total_size - 1);
             let content_length = end - start + 1;
             
             // HEAD request: return headers only, no body
@@ -485,7 +483,7 @@ pub fn build_static_file_response(
                 });
         }
         RangeParseResult::NotSatisfiable => {
-            return build_416_response(total_size as u64);
+            return build_416_response(total_size);
         }
         RangeParseResult::None => {
             // No Range header or malformed, return full content
@@ -514,7 +512,7 @@ pub fn build_static_file_response(
 }
 
 /// Build 416 Range Not Satisfiable response
-pub fn build_416_response(file_size: u64) -> Response<Full<Bytes>> {
+pub fn build_416_response(file_size: usize) -> Response<Full<Bytes>> {
     Response::builder()
         .status(416)
         .header("Content-Type", "text/plain")
