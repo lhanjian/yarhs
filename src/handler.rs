@@ -1,4 +1,4 @@
-use crate::config::{AppState, RouteHandler};
+use crate::config::{AppState, RouteHandler, RoutesConfig};
 use crate::logger;
 use crate::response;
 use http_body_util::Full;
@@ -7,158 +7,148 @@ use hyper::{Method, Request, Response};
 use std::convert::Infallible;
 use std::sync::Arc;
 
-pub async fn handle_request(
-    req: Request<hyper::body::Incoming>,
-    state: Arc<AppState>,
-) -> Result<Response<Full<Bytes>>, Infallible> {
-    let method = req.method();
-    let uri = req.uri();
-    let version = req.version();
-    let path = uri.path();
-
-    // Use cached access_log flag to avoid lock
-    let access_log = state
-        .cached_access_log
-        .load(std::sync::atomic::Ordering::Relaxed);
-
-    if access_log {
-        logger::log_request(method, uri, version);
-    }
-
-    // Check HTTP method - only allow GET, HEAD, OPTIONS for static file server
-    let is_head = *method == Method::HEAD;
+/// Check HTTP method and return early response if not GET/HEAD
+/// Returns Some(response) for OPTIONS/405, None to continue processing
+fn check_http_method(method: &Method, enable_cors: bool) -> Option<Response<Full<Bytes>>> {
     match method {
-        &Method::GET | &Method::HEAD => {
-            // Continue processing
-        }
-        &Method::OPTIONS => {
-            // Handle OPTIONS for CORS preflight
-            let enable_cors = state.config.http.enable_cors;
-            return Ok(response::build_options_response(enable_cors));
-        }
+        &Method::GET | &Method::HEAD => None,
+        &Method::OPTIONS => Some(response::build_options_response(enable_cors)),
         _ => {
-            // Method not allowed for static file server
             logger::log_warning(&format!("Method not allowed: {method}"));
-            return Ok(response::build_405_response());
+            Some(response::build_405_response())
         }
     }
+}
 
-    // Extract If-None-Match header for ETag validation
-    let if_none_match = req
-        .headers()
-        .get("if-none-match")
-        .and_then(|v| v.to_str().ok())
-        .map(ToString::to_string);
-
-    // Read lightweight logging config only (avoid cloning heavy http_config)
-    let show_headers = {
-        let config = state.dynamic_config.read().await;
-        config.logging.show_headers
-    };
-
-    logger::log_headers_count(req.headers().len(), show_headers);
-
-    // Check request body size limit
-    let max_body_size = state.config.http.max_body_size;
-    if let Some(content_length) = req.headers().get("content-length") {
-        match content_length.to_str() {
-            Ok(size_str) => match size_str.parse::<u64>() {
-                Ok(size) if size > max_body_size => {
-                    logger::log_error(&format!(
-                        "Request body too large: {size} bytes (max: {max_body_size})"
-                    ));
-                    return Ok(response::build_413_response());
-                }
-                Err(_) => {
-                    logger::log_warning(&format!(
-                        "Invalid Content-Length value: '{size_str}', skipping size check"
-                    ));
-                }
-                _ => {} // Size is within limit
-            },
-            Err(_) => {
-                logger::log_warning("Content-Length header contains non-ASCII characters");
+/// Validate Content-Length header against max body size
+/// Returns Some(413 response) if too large, None otherwise
+fn check_body_size(req: &Request<hyper::body::Incoming>, max_body_size: u64) -> Option<Response<Full<Bytes>>> {
+    let content_length = req.headers().get("content-length")?;
+    content_length.to_str().map_or_else(
+        |_| {
+            logger::log_warning("Content-Length header contains non-ASCII characters");
+            None
+        },
+        |size_str| match size_str.parse::<u64>() {
+            Ok(size) if size > max_body_size => {
+                logger::log_error(&format!(
+                    "Request body too large: {size} bytes (max: {max_body_size})"
+                ));
+                Some(response::build_413_response())
             }
-        }
-    }
+            Err(_) => {
+                logger::log_warning(&format!(
+                    "Invalid Content-Length value: '{size_str}', skipping size check"
+                ));
+                None
+            }
+            _ => None,
+        },
+    )
+}
 
-    // Get routes configuration (Arc reference, no clone)
-    let routes = {
-        let config = state.dynamic_config.read().await;
-        Arc::clone(&config.routes)
-    };
-
-    // Route handling with dynamic configuration
-    // Note: API routes are handled by separate API server on port 8000
-    let response = if routes.favicon_paths.iter().any(|p| path == p) {
-        // 1. Favicon routes
-        response::load_favicon()
+/// Route the request based on path and routes configuration
+async fn route_request(
+    path: &str,
+    routes: &Arc<RoutesConfig>,
+    state: &Arc<AppState>,
+    access_log: bool,
+    if_none_match: Option<&str>,
+    range_header: Option<&str>,
+    is_head: bool,
+) -> Response<Full<Bytes>> {
+    // 1. Favicon routes
+    if routes.favicon_paths.iter().any(|p| path == p) {
+        return response::load_favicon()
             .await
             .map_or_else(response::build_404_response, |favicon_data| {
                 let size = favicon_data.len();
                 if access_log {
                     logger::log_response(size);
                 }
-                response::build_favicon_response(favicon_data, if_none_match.as_deref(), is_head)
-            })
-    } else if let Some(handler) = routes.custom_routes.get(path) {
-        // 2. Custom routes (exact match)
-        handle_custom_route(
-            path,
-            handler,
-            &state,
-            access_log,
-            path,
-            &routes.index_files,
-            if_none_match.as_deref(),
-            is_head,
-        )
-        .await
-    } else if let Some((prefix, handler)) = routes
-        .custom_routes
-        .iter()
-        .find(|(prefix, _)| path.starts_with(prefix.as_str()))
-    {
-        // 3. Custom routes (prefix match, e.g., /static/*)
-        handle_custom_route(
-            path,
-            handler,
-            &state,
-            access_log,
-            prefix,
-            &routes.index_files,
-            if_none_match.as_deref(),
-            is_head,
-        )
-        .await
-    } else {
-        // 4. Default: homepage
-        let http_config = {
-            let config = state.dynamic_config.read().await;
-            Arc::clone(&config.http)
-        };
+                response::build_favicon_response(&favicon_data, if_none_match, is_head)
+            });
+    }
 
-        let html = response::get_default_homepage();
-        let html_len = html.len();
-        let resp = response::build_html_response(html, &http_config, is_head);
+    // 2. Custom routes (exact match)
+    if let Some(handler) = routes.custom_routes.get(path) {
+        return handle_custom_route(path, handler, access_log, path, &routes.index_files, if_none_match, range_header, is_head).await;
+    }
 
-        if access_log {
-            logger::log_response(html_len);
-        }
-        resp
+    // 3. Custom routes (prefix match)
+    if let Some((prefix, handler)) = routes.custom_routes.iter().find(|(p, _)| path.starts_with(p.as_str())) {
+        return handle_custom_route(path, handler, access_log, prefix, &routes.index_files, if_none_match, range_header, is_head).await;
+    }
+
+    // 4. Default: homepage
+    let http_config = {
+        let config = state.dynamic_config.read().await;
+        Arc::clone(&config.http)
+    };
+    let html = response::get_default_homepage();
+    let html_len = html.len();
+    if access_log {
+        logger::log_response(html_len);
+    }
+    response::build_html_response(html, &http_config, is_head)
+}
+
+pub async fn handle_request(
+    req: Request<hyper::body::Incoming>,
+    state: Arc<AppState>,
+) -> Result<Response<Full<Bytes>>, Infallible> {
+    let method = req.method();
+    let uri = req.uri();
+    let path = uri.path();
+    let is_head = *method == Method::HEAD;
+
+    let access_log = state.cached_access_log.load(std::sync::atomic::Ordering::Relaxed);
+    if access_log {
+        logger::log_request(method, uri, req.version());
+    }
+
+    // Check HTTP method
+    if let Some(resp) = check_http_method(method, state.config.http.enable_cors) {
+        return Ok(resp);
+    }
+
+    // Check body size
+    if let Some(resp) = check_body_size(&req, state.config.http.max_body_size) {
+        return Ok(resp);
+    }
+
+    // Log headers
+    let show_headers = state.dynamic_config.read().await.logging.show_headers;
+    logger::log_headers_count(req.headers().len(), show_headers);
+
+    // Extract If-None-Match header
+    let if_none_match = req.headers().get("if-none-match")
+        .and_then(|v| v.to_str().ok())
+        .map(ToString::to_string);
+
+    // Extract Range header
+    let range_header = req.headers().get("range")
+        .and_then(|v| v.to_str().ok())
+        .map(ToString::to_string);
+
+    // Get routes and dispatch
+    let routes = {
+        let config = state.dynamic_config.read().await;
+        Arc::clone(&config.routes)
     };
 
+    let response = route_request(path, &routes, &state, access_log, if_none_match.as_deref(), range_header.as_deref(), is_head).await;
     Ok(response)
 }
 
 async fn handle_custom_route(
     path: &str,
     handler: &RouteHandler,
-    _state: &Arc<AppState>,
     access_log: bool,
     route_prefix: &str,
     index_files: &[String],
     if_none_match: Option<&str>,
+    range_header: Option<&str>,
     is_head: bool,
 ) -> Response<Full<Bytes>> {
     match handler {
@@ -171,7 +161,7 @@ async fn handle_custom_route(
                 if access_log {
                     logger::log_response(size);
                 }
-                response::build_static_file_response(content, content_type, if_none_match, is_head)
+                response::build_static_file_response(&content, content_type, if_none_match, is_head, range_header)
             } else {
                 response::build_404_response()
             }
@@ -183,7 +173,7 @@ async fn handle_custom_route(
                 if access_log {
                     logger::log_response(size);
                 }
-                response::build_static_file_response(content, content_type, if_none_match, is_head)
+                response::build_static_file_response(&content, content_type, if_none_match, is_head, range_header)
             } else {
                 response::build_404_response()
             }

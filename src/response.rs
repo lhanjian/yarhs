@@ -10,6 +10,92 @@ use tokio::fs;
 
 const FAVICON_PATH: &str = "static/favicon.svg";
 
+/// Parsed Range request
+#[derive(Debug, Clone)]
+pub struct RangeRequest {
+    pub start: u64,
+    pub end: Option<u64>, // None means "to end of file"
+}
+
+/// Result of parsing Range header
+#[derive(Debug)]
+pub enum RangeParseResult {
+    /// Valid range request
+    Valid(RangeRequest),
+    /// Range is not satisfiable (start >= file_size) - should return 416
+    NotSatisfiable,
+    /// No Range header or malformed (ignore, return full content)
+    None,
+}
+
+/// Parse HTTP Range header (only supports single range, bytes unit)
+/// Format: "bytes=start-end" or "bytes=start-" or "bytes=-suffix"
+pub fn parse_range_header(range_header: Option<&str>, file_size: u64) -> RangeParseResult {
+    let Some(header) = range_header else {
+        return RangeParseResult::None;
+    };
+    
+    let Some(header) = header.strip_prefix("bytes=") else {
+        return RangeParseResult::None; // Not bytes unit, ignore
+    };
+    
+    // Only support single range (not multi-range)
+    if header.contains(',') {
+        return RangeParseResult::None;
+    }
+    
+    let parts: Vec<&str> = header.split('-').collect();
+    if parts.len() != 2 {
+        return RangeParseResult::None;
+    }
+    
+    let (start_str, end_str) = (parts[0].trim(), parts[1].trim());
+    
+    if start_str.is_empty() {
+        // Suffix range: "-500" means last 500 bytes
+        let Ok(suffix) = end_str.parse::<u64>() else {
+            return RangeParseResult::None;
+        };
+        if suffix == 0 {
+            return RangeParseResult::NotSatisfiable;
+        }
+        // Suffix larger than file is valid, just return whole file as range
+        let start = file_size.saturating_sub(suffix);
+        return RangeParseResult::Valid(RangeRequest {
+            start,
+            end: Some(file_size - 1),
+        });
+    }
+    
+    let Ok(start) = start_str.parse::<u64>() else {
+        return RangeParseResult::None;
+    };
+    
+    // Start beyond file size is not satisfiable
+    if start >= file_size {
+        return RangeParseResult::NotSatisfiable;
+    }
+    
+    let end = if end_str.is_empty() {
+        None // Open-ended range
+    } else {
+        let Ok(e) = end_str.parse::<u64>() else {
+            return RangeParseResult::None;
+        };
+        // Clamp end to file size - 1
+        Some(e.min(file_size - 1))
+    };
+    
+    // Validate: start <= end
+    if let Some(e) = end {
+        if start > e {
+            return RangeParseResult::NotSatisfiable;
+        }
+    }
+    
+    RangeParseResult::Valid(RangeRequest { start, end })
+}
+
 /// Generate `ETag` from content using fast hash
 pub fn generate_etag(content: &[u8]) -> String {
     let mut hasher = DefaultHasher::new();
@@ -114,8 +200,9 @@ pub async fn load_static_file(
     let content_type = match file_path.extension()?.to_str()? {
         "html" | "htm" => "text/html; charset=utf-8",
         "css" => "text/css",
-        "js" => "application/javascript",
+        "js" | "mjs" => "application/javascript",
         "json" => "application/json",
+        "wasm" => "application/wasm",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",
@@ -136,8 +223,9 @@ pub async fn load_single_file(file_path: &str) -> Option<(Vec<u8>, &'static str)
     let content_type = match path.extension().and_then(|e| e.to_str()) {
         Some("html" | "htm") => "text/html; charset=utf-8",
         Some("css") => "text/css",
-        Some("js") => "application/javascript",
+        Some("js" | "mjs") => "application/javascript",
         Some("json") => "application/json",
+        Some("wasm") => "application/wasm",
         Some("png") => "image/png",
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
@@ -303,8 +391,8 @@ pub async fn load_favicon() -> Option<Vec<u8>> {
 }
 
 /// Build favicon response with `ETag` conditional check
-pub fn build_favicon_response(data: Vec<u8>, if_none_match: Option<&str>, is_head: bool) -> Response<Full<Bytes>> {
-    let etag = generate_etag(&data);
+pub fn build_favicon_response(data: &[u8], if_none_match: Option<&str>, is_head: bool) -> Response<Full<Bytes>> {
+    let etag = generate_etag(data);
 
     if check_etag_match(if_none_match, &etag) {
         return build_304_response(&etag);
@@ -314,7 +402,7 @@ pub fn build_favicon_response(data: Vec<u8>, if_none_match: Option<&str>, is_hea
     let body = if is_head {
         Bytes::new()
     } else {
-        Bytes::from(data.clone())
+        Bytes::from(data.to_owned())
     };
 
     Response::builder()
@@ -354,35 +442,87 @@ pub fn build_413_response() -> Response<Full<Bytes>> {
 
 /// Build static file response with `ETag` support and conditional check
 pub fn build_static_file_response(
-    data: Vec<u8>,
+    data: &[u8],
     content_type: &str,
     if_none_match: Option<&str>,
     is_head: bool,
+    range_header: Option<&str>,
 ) -> Response<Full<Bytes>> {
-    let etag = generate_etag(&data);
+    let etag = generate_etag(data);
+    let total_size = data.len();
 
     // Check if client has cached version
     if check_etag_match(if_none_match, &etag) {
         return build_304_response(&etag);
     }
 
-    // HEAD request: return headers only, no body
+    // Check for Range request
+    match parse_range_header(range_header, total_size as u64) {
+        RangeParseResult::Valid(range) => {
+            let start = range.start as usize;
+            let end = range.end.map_or(total_size - 1, |e| e as usize);
+            let content_length = end - start + 1;
+            
+            // HEAD request: return headers only, no body
+            let body = if is_head {
+                Bytes::new()
+            } else {
+                Bytes::from(data[start..=end].to_vec())
+            };
+            
+            return Response::builder()
+                .status(206)
+                .header("Content-Type", content_type)
+                .header("Content-Length", content_length)
+                .header("Content-Range", format!("bytes {start}-{end}/{total_size}"))
+                .header("Accept-Ranges", "bytes")
+                .header("ETag", etag)
+                .header("Cache-Control", "public, max-age=3600")
+                .body(Full::new(body))
+                .unwrap_or_else(|e| {
+                    crate::logger::log_error(&format!("Failed to build 206 response: {e}"));
+                    Response::new(Full::new(Bytes::new()))
+                });
+        }
+        RangeParseResult::NotSatisfiable => {
+            return build_416_response(total_size as u64);
+        }
+        RangeParseResult::None => {
+            // No Range header or malformed, return full content
+        }
+    }
+
+    // Full response (no Range or invalid Range header ignored)
     let body = if is_head {
         Bytes::new()
     } else {
-        Bytes::from(data.clone())
+        Bytes::from(data.to_owned())
     };
 
     Response::builder()
         .status(200)
         .header("Content-Type", content_type)
-        .header("Content-Length", data.len())
+        .header("Content-Length", total_size)
+        .header("Accept-Ranges", "bytes")
         .header("ETag", etag)
         .header("Cache-Control", "public, max-age=3600")
         .body(Full::new(body))
         .unwrap_or_else(|e| {
             crate::logger::log_error(&format!("Failed to build static file response: {e}"));
             Response::new(Full::new(Bytes::new()))
+        })
+}
+
+/// Build 416 Range Not Satisfiable response
+pub fn build_416_response(file_size: u64) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(416)
+        .header("Content-Type", "text/plain")
+        .header("Content-Range", format!("bytes */{file_size}"))
+        .body(Full::new(Bytes::from("Range Not Satisfiable")))
+        .unwrap_or_else(|e| {
+            crate::logger::log_error(&format!("Failed to build 416 response: {e}"));
+            Response::new(Full::new(Bytes::from("Range Not Satisfiable")))
         })
 }
 

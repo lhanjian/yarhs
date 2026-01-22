@@ -1,0 +1,31 @@
+[server]
+host = "127.0.0.1"
+port = 8080
+api_host = "127.0.0.1"
+api_port = 8000
+workers = 4
+
+[logging]
+level = "info"
+access_log = true
+show_headers = false
+
+[performance]
+keep_alive_timeout = 75
+read_timeout = 30
+write_timeout = 30
+max_connections = 5000
+
+[http]
+server_name = "YARHS/0.3.0"
+default_content_type = "text/html; charset=utf-8"
+enable_cors = true  # WASM 可能需要 CORS
+max_body_size = 10485760
+
+[routes]
+favicon_paths = ["/favicon.ico", "/favicon.svg"]
+index_files = ["index.html", "index.htm"]
+
+[routes.custom_routes]
+# 将根路径映射到 wasm-video-player/www 目录
+"/" = { type = "dir", path = "/home/hanjian/rust/wasm-video-player/www" }
