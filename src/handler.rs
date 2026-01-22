@@ -43,14 +43,23 @@ pub async fn handle_request(
     // Check request body size limit
     let max_body_size = state.config.http.max_body_size;
     if let Some(content_length) = req.headers().get("content-length") {
-        if let Ok(size_str) = content_length.to_str() {
-            if let Ok(size) = size_str.parse::<u64>() {
-                if size > max_body_size {
+        match content_length.to_str() {
+            Ok(size_str) => match size_str.parse::<u64>() {
+                Ok(size) if size > max_body_size => {
                     logger::log_error(&format!(
                         "Request body too large: {size} bytes (max: {max_body_size})"
                     ));
                     return Ok(response::build_413_response());
                 }
+                Err(_) => {
+                    logger::log_warning(&format!(
+                        "Invalid Content-Length value: '{size_str}', skipping size check"
+                    ));
+                }
+                _ => {} // Size is within limit
+            },
+            Err(_) => {
+                logger::log_warning("Content-Length header contains non-ASCII characters");
             }
         }
     }

@@ -70,7 +70,8 @@ yarhs/
 │       ├── listener.rs   - TCP listener (SO_REUSEPORT)
 │       ├── connection.rs - Connection handling
 │       ├── loop.rs       - Server main loop
-│       └── restart.rs    - Hot restart logic
+│       ├── restart.rs    - Hot restart logic
+│       └── signal.rs     - Signal handling
 ├── scripts/              - Test scripts
 │   ├── run_all_tests.sh  - Unified test script
 │   └── integration_tests.sh - Integration tests
@@ -131,7 +132,7 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
   }'
 
 # View full API documentation
-curl http://localhost:8080/  # Displays API.md by default
+curl http://localhost:8000/v1/discovery  # Get all resources
 ```
 
 ## 🚀 Quick Start

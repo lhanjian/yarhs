@@ -79,7 +79,15 @@ where
 
                 let old_addr = listener.local_addr()?;
                 let new_addr_str = (config.get_new_addr)(&new_config);
-                let new_addr = new_addr_str.parse::<std::net::SocketAddr>()?;
+                let new_addr = match new_addr_str.parse::<std::net::SocketAddr>() {
+                    Ok(addr) => addr,
+                    Err(e) => {
+                        logger::log_error(&format!(
+                            "Invalid server address '{new_addr_str}': {e}"
+                        ));
+                        continue;
+                    }
+                };
 
                 if config.is_api_server {
                     println!("[API RESTART] Current address: {old_addr}");

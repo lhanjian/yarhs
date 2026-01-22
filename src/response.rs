@@ -64,7 +64,15 @@ pub async fn load_static_file(
     let mut file_path = Path::new(static_dir).join(relative_path);
 
     // Security: ensure file_path is within static_dir
-    let static_dir_canonical = Path::new(static_dir).canonicalize().ok()?;
+    let static_dir_canonical = match Path::new(static_dir).canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            crate::logger::log_warning(&format!(
+                "Static directory not found or inaccessible '{static_dir}': {e}"
+            ));
+            return None;
+        }
+    };
 
     // Check if path is a directory, try index files
     if file_path.is_dir() || relative_path.is_empty() || relative_path.ends_with('/') {
@@ -77,12 +85,30 @@ pub async fn load_static_file(
         }
     }
 
-    let file_path_canonical = file_path.canonicalize().ok()?;
+    // File not found is common (404), no need to log at warning level
+    let Ok(file_path_canonical) = file_path.canonicalize() else {
+        return None;
+    };
     if !file_path_canonical.starts_with(&static_dir_canonical) {
+        crate::logger::log_warning(&format!(
+            "Path traversal attempt blocked: {} -> {}",
+            path,
+            file_path_canonical.display()
+        ));
         return None;
     }
 
-    let content = fs::read(&file_path).await.ok()?;
+    let content = match fs::read(&file_path).await {
+        Ok(c) => c,
+        Err(e) => {
+            crate::logger::log_error(&format!(
+                "Failed to read file '{}': {}",
+                file_path.display(),
+                e
+            ));
+            return None;
+        }
+    };
 
     // Determine content type from extension
     let content_type = match file_path.extension()?.to_str()? {

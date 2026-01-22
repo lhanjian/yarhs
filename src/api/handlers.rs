@@ -126,21 +126,30 @@ pub async fn handle_discovery_get(
             vec![Resource {
                 type_url: type_url.clone(),
                 name: "default".to_string(),
-                value: serde_json::to_value(&*dynamic_config.http).unwrap_or_default(),
+                value: serde_json::to_value(&*dynamic_config.http).unwrap_or_else(|e| {
+                    logger::log_error(&format!("Failed to serialize HTTP config: {e}"));
+                    serde_json::json!({"error": "serialization_failed"})
+                }),
             }]
         }
         ResourceType::Logging => {
             vec![Resource {
                 type_url: type_url.clone(),
                 name: "default".to_string(),
-                value: serde_json::to_value(&dynamic_config.logging).unwrap_or_default(),
+                value: serde_json::to_value(&dynamic_config.logging).unwrap_or_else(|e| {
+                    logger::log_error(&format!("Failed to serialize logging config: {e}"));
+                    serde_json::json!({"error": "serialization_failed"})
+                }),
             }]
         }
         ResourceType::Performance => {
             vec![Resource {
                 type_url: type_url.clone(),
                 name: "default".to_string(),
-                value: serde_json::to_value(&dynamic_config.performance).unwrap_or_default(),
+                value: serde_json::to_value(&dynamic_config.performance).unwrap_or_else(|e| {
+                    logger::log_error(&format!("Failed to serialize performance config: {e}"));
+                    serde_json::json!({"error": "serialization_failed"})
+                }),
             }]
         }
     };

@@ -70,7 +70,8 @@ yarhs/
 │       ├── listener.rs   - TCP 监听器 (SO_REUSEPORT)
 │       ├── connection.rs - 连接处理
 │       ├── loop.rs       - 服务器主循环
-│       └── restart.rs    - 热重启逻辑
+│       ├── restart.rs    - 热重启逻辑
+│       └── signal.rs     - 信号处理
 ├── scripts/              - 测试脚本
 │   ├── run_all_tests.sh  - 统一测试脚本
 │   └── integration_tests.sh - 集成测试
@@ -131,7 +132,7 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
   }'
 
 # 查看完整 API 文档
-curl http://localhost:8080/  # 默认显示 API.md
+curl http://localhost:8000/v1/discovery  # 获取所有资源
 ```
 
 ## 🚀 快速开始
