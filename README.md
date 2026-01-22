@@ -72,7 +72,37 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
   }'
 ```
 
-### 6. High Performance
+### 6. Access Log Formatting
+- ✅ **Multiple Formats** - combined (Apache/Nginx), common (CLF), json, custom
+- ✅ **Custom Patterns** - Define your own log format with variables
+- ✅ **Request Timing** - Includes request processing time in logs
+- ✅ **Dynamic Configuration** - Change format at runtime via API
+
+```bash
+# Supported formats
+# combined: Apache/Nginx combined format (default)
+# common: Common Log Format (CLF)
+# json: JSON structured logs
+# custom: Your own pattern with variables
+
+# Configure via API
+curl -X POST http://localhost:8000/v1/discovery:logging \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resources": [{
+      "level": "info",
+      "access_log": true,
+      "access_log_format": "json"
+    }]
+  }'
+
+# Custom format variables:
+# $remote_addr, $time_local, $time_iso8601, $request, $request_method
+# $request_uri, $status, $body_bytes_sent, $http_referer
+# $http_user_agent, $request_time
+```
+
+### 7. High Performance
 - **40k+ QPS** (static files)
 - **63k+ QPS** (API endpoints)
 - Fully async I/O, built on Tokio + Hyper

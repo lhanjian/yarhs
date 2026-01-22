@@ -4,16 +4,16 @@
 
 log_section "6. xDS API"
 
-# Snapshot endpoint
+# Snapshot endpoint - verify it has version_info field
 RESPONSE=$(curl -s "$API_URL/v1/discovery")
-assert_contains "discovery snapshot endpoint" "$RESPONSE" "version_info"
+assert_json_has "discovery snapshot endpoint" "$RESPONSE" ".version_info"
 
-# Resource endpoints
+# Resource endpoints - verify structure with jq
 RESPONSE=$(curl -s "$API_URL/v1/discovery:routes")
-assert_contains "routes resource endpoint" "$RESPONSE" "resources"
+assert_json_has "routes resource endpoint" "$RESPONSE" ".resources"
 
 RESPONSE=$(curl -s "$API_URL/v1/discovery:logging")
-assert_contains "logging resource endpoint" "$RESPONSE" "level"
+assert_json_has "logging resource endpoint" "$RESPONSE" ".resources[0].level"
 
 RESPONSE=$(curl -s "$API_URL/v1/discovery:listeners")
-assert_contains "listeners resource endpoint" "$RESPONSE" "main_server"
+assert_json_has "listeners resource endpoint" "$RESPONSE" ".resources[0].main_server"

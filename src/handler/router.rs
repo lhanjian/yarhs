@@ -6,11 +6,21 @@ use crate::config::{AppState, RouteHandler, RoutesConfig};
 use crate::handler::static_files;
 use crate::http;
 use crate::logger;
+use crate::logger::AccessLogEntry;
 use http_body_util::Full;
-use hyper::body::Bytes;
+use hyper::body::{Body, Bytes};
 use hyper::{Method, Request, Response};
 use std::convert::Infallible;
+use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Instant;
+
+/// Get elapsed time in microseconds, saturating to `u64::MAX` if overflow
+#[inline]
+#[allow(clippy::cast_possible_truncation)]
+fn elapsed_micros(start: Instant) -> u64 {
+    start.elapsed().as_micros().min(u128::from(u64::MAX)) as u64
+}
 
 /// Request context encapsulating information needed for request processing
 pub struct RequestContext<'a> {
@@ -19,33 +29,82 @@ pub struct RequestContext<'a> {
     pub if_none_match: Option<String>,
     pub if_modified_since: Option<String>,
     pub range_header: Option<String>,
-    pub access_log: bool,
 }
 
 /// Main entry point for HTTP request handling
+#[allow(clippy::too_many_lines)]
 pub async fn handle_request(
     req: Request<hyper::body::Incoming>,
     state: Arc<AppState>,
+    remote_addr: SocketAddr,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
-    let method = req.method();
-    let uri = req.uri();
-    let path = uri.path();
-    let is_head = *method == Method::HEAD;
+    let start_time = Instant::now();
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+    let path = uri.path().to_string();
+    let query = uri.query().map(ToString::to_string);
+    let http_version = format!("{:?}", req.version()).replace("HTTP/", "");
+    let is_head = method == Method::HEAD;
+
+    // Extract headers for logging
+    let referer = req
+        .headers()
+        .get("referer")
+        .and_then(|v| v.to_str().ok())
+        .map(ToString::to_string);
+    let user_agent = req
+        .headers()
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .map(ToString::to_string);
 
     let access_log = state
         .cached_access_log
         .load(std::sync::atomic::Ordering::Relaxed);
-    if access_log {
-        logger::log_request(method, uri, req.version());
-    }
+
+    // Get log format early
+    let log_format = {
+        let config = state.dynamic_config.read().await;
+        config.logging.access_log_format.clone()
+    };
 
     // 1. Check HTTP method
-    if let Some(resp) = check_http_method(method, state.config.http.enable_cors) {
+    if let Some(resp) = check_http_method(&method, state.config.http.enable_cors) {
+        if access_log {
+            log_access_entry(
+                &remote_addr,
+                &method,
+                &path,
+                query.as_deref(),
+                &http_version,
+                resp.status().as_u16(),
+                0,
+                referer.as_deref(),
+                user_agent.as_deref(),
+                elapsed_micros(start_time),
+                &log_format,
+            );
+        }
         return Ok(resp);
     }
 
     // 2. Check body size
     if let Some(resp) = check_body_size(&req, state.config.http.max_body_size) {
+        if access_log {
+            log_access_entry(
+                &remote_addr,
+                &method,
+                &path,
+                query.as_deref(),
+                &http_version,
+                resp.status().as_u16(),
+                0,
+                referer.as_deref(),
+                user_agent.as_deref(),
+                elapsed_micros(start_time),
+                &log_format,
+            );
+        }
         return Ok(resp);
     }
 
@@ -55,7 +114,7 @@ pub async fn handle_request(
 
     // 4. Extract headers for caching and range requests
     let ctx = RequestContext {
-        path,
+        path: &path,
         is_head,
         if_none_match: req
             .headers()
@@ -72,7 +131,6 @@ pub async fn handle_request(
             .get("range")
             .and_then(|v| v.to_str().ok())
             .map(ToString::to_string),
-        access_log,
     };
 
     // 5. Get routes config and dispatch
@@ -82,6 +140,30 @@ pub async fn handle_request(
     };
 
     let response = route_request(&ctx, &routes, &state).await;
+
+    // Log access after response is built
+    if access_log {
+        #[allow(clippy::cast_possible_truncation)]
+        let body_bytes = response
+            .body()
+            .size_hint()
+            .exact()
+            .unwrap_or(0) as usize;
+        log_access_entry(
+            &remote_addr,
+            &method,
+            &path,
+            query.as_deref(),
+            &http_version,
+            response.status().as_u16(),
+            body_bytes,
+            referer.as_deref(),
+            user_agent.as_deref(),
+            elapsed_micros(start_time),
+            &log_format,
+        );
+    }
+
     Ok(response)
 }
 
@@ -193,11 +275,37 @@ async fn serve_default_homepage(
     };
 
     let html = static_files::get_default_homepage();
-    let html_len = html.len();
-
-    if ctx.access_log {
-        logger::log_response(html_len);
-    }
 
     http::response::build_html_response(html, ctx.is_head)
+}
+
+/// Helper function to log access entry
+#[allow(clippy::too_many_arguments)]
+fn log_access_entry(
+    remote_addr: &SocketAddr,
+    method: &Method,
+    path: &str,
+    query: Option<&str>,
+    http_version: &str,
+    status: u16,
+    body_bytes: usize,
+    referer: Option<&str>,
+    user_agent: Option<&str>,
+    request_time_us: u64,
+    format: &str,
+) {
+    let mut entry = AccessLogEntry::new(
+        remote_addr.ip().to_string(),
+        method.to_string(),
+        path.to_string(),
+    );
+    entry.query = query.map(ToString::to_string);
+    entry.http_version = http_version.to_string();
+    entry.status = status;
+    entry.body_bytes = body_bytes;
+    entry.referer = referer.map(ToString::to_string);
+    entry.user_agent = user_agent.map(ToString::to_string);
+    entry.request_time_us = request_time_us;
+
+    logger::log_access(&entry, format);
 }

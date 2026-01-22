@@ -28,6 +28,11 @@ SERVER_HTTP__ENABLE_CORS=true cargo run
 - `logging.level` - Log verbosity: "debug", "info", "error" (default: "info")
 - `logging.access_log` - Enable access logging (default: true)
 - `logging.show_headers` - Show request headers (default: false)
+- `logging.access_log_format` - Access log format (default: "combined")
+  - `combined` - Apache/Nginx combined format
+  - `common` - Common Log Format (CLF)
+  - `json` - JSON structured logging
+  - Custom pattern with variables
 
 ### Performance Configuration
 - `performance.keep_alive_timeout` - Keep-alive timeout in seconds (default: 75)

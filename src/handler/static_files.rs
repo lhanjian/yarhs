@@ -18,12 +18,7 @@ const FAVICON_PATH: &str = "static/favicon.svg";
 /// Serve favicon
 pub async fn serve_favicon(ctx: &RequestContext<'_>) -> Response<Full<Bytes>> {
     match load_favicon().await {
-        Some(data) => {
-            if ctx.access_log {
-                logger::log_response(data.len());
-            }
-            build_favicon_response(&data, ctx.if_none_match.as_deref(), ctx.is_head)
-        }
+        Some(data) => build_favicon_response(&data, ctx.if_none_match.as_deref(), ctx.is_head),
         None => http::build_404_response(),
     }
 }
@@ -49,7 +44,6 @@ pub async fn serve_directory(
         ctx.if_none_match.as_deref(),
         ctx.is_head,
         ctx.range_header.as_deref(),
-        ctx.access_log,
     )
     .await
     {
@@ -68,7 +62,6 @@ pub async fn serve_file(ctx: &RequestContext<'_>, file_path: &str) -> Response<F
         ctx.if_none_match.as_deref(),
         ctx.is_head,
         ctx.range_header.as_deref(),
-        ctx.access_log,
     )
     .await
     {
@@ -91,7 +84,6 @@ async fn load_from_directory_optimized(
     if_none_match: Option<&str>,
     is_head: bool,
     range_header: Option<&str>,
-    access_log: bool,
 ) -> Option<Response<Full<Bytes>>> {
     // Resolve file path (reuse existing logic)
     let file_path = resolve_file_path(static_dir, path, route_prefix, index_files)?;
@@ -113,10 +105,6 @@ async fn load_from_directory_optimized(
     // Step 3: Slow path - read file content
     let content = fs::read(&file_path).await.ok()?;
 
-    if access_log {
-        logger::log_response(content.len());
-    }
-
     // Generate content-based ETag for accuracy
     let etag = cache::generate_etag(&content);
 
@@ -137,14 +125,12 @@ async fn load_from_directory_optimized(
 }
 
 /// Optimized single file loading with mtime-first check
-#[allow(clippy::too_many_arguments)]
 async fn load_single_file_optimized(
     file_path: &str,
     if_modified_since: Option<&str>,
     if_none_match: Option<&str>,
     is_head: bool,
     range_header: Option<&str>,
-    access_log: bool,
 ) -> Option<Response<Full<Bytes>>> {
     let path = Path::new(file_path);
     let content_type = mime::get_content_type(path.extension().and_then(|e| e.to_str()));
@@ -162,10 +148,6 @@ async fn load_single_file_optimized(
 
     // Step 3: Slow path - read content
     let content = fs::read(path).await.ok()?;
-
-    if access_log {
-        logger::log_response(content.len());
-    }
 
     let etag = cache::generate_etag(&content);
 

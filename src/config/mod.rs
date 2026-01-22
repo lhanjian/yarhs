@@ -30,6 +30,7 @@ impl Config {
             .set_default("logging.level", "info")?
             .set_default("logging.access_log", true)?
             .set_default("logging.show_headers", false)?
+            .set_default("logging.access_log_format", "combined")?
             .set_default("performance.keep_alive_timeout", 75)?
             .set_default("performance.read_timeout", 30)?
             .set_default("performance.write_timeout", 30)?

@@ -66,6 +66,7 @@ pub fn accept_connection(
         Arc::clone(state),
         Arc::clone(conn_counter),
         is_api_server,
+        peer_addr,
     );
 }
 
@@ -84,11 +85,13 @@ pub fn accept_connection(
 /// * `state` - Shared application state
 /// * `conn_counter` - Active connection counter to decrement when done
 /// * `is_api_server` - Whether this is handling API management requests
+/// * `peer_addr` - The peer's socket address for logging
 fn handle_connection(
     stream: tokio::net::TcpStream,
     state: Arc<config::AppState>,
     conn_counter: Arc<AtomicUsize>,
     is_api_server: bool,
+    peer_addr: std::net::SocketAddr,
 ) {
     tokio::task::spawn_local(async move {
         let io = TokioIo::new(stream);
@@ -111,13 +114,14 @@ fn handle_connection(
             io,
             service_fn(move |req| {
                 let state_clone = Arc::clone(&state);
+                let addr = peer_addr;
                 async move {
                     if is_api_server {
                         // API server handles only API requests
                         api::handle_api_config(req, state_clone).await
                     } else {
                         // Application server handles all non-API requests
-                        handler::handle_request(req, state_clone).await
+                        handler::handle_request(req, state_clone, addr).await
                     }
                 }
             }),

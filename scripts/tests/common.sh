@@ -57,5 +57,30 @@ assert_status() {
     fi
 }
 
+# Assertion function: check JSON field value using jq
+# Usage: assert_json_field "test name" "$json_response" ".status" "ACK"
+assert_json_field() {
+    local name="$1" json="$2" path="$3" expected="$4"
+    local actual
+    actual=$(echo "$json" | jq -r "$path" 2>/dev/null)
+    if [ "$actual" = "$expected" ]; then
+        log_pass "$name"
+    else
+        log_fail "$name (expected: $expected, got: $actual)"
+    fi
+}
+
+# Assertion function: check JSON field exists
+assert_json_has() {
+    local name="$1" json="$2" path="$3"
+    local value
+    value=$(echo "$json" | jq -e "$path" 2>/dev/null)
+    if [ $? -eq 0 ] && [ "$value" != "null" ]; then
+        log_pass "$name"
+    else
+        log_fail "$name (path $path not found)"
+    fi
+}
+
 # Export functions for sub-scripts to use
-export -f log_info log_pass log_fail log_section assert_contains assert_status
+export -f log_info log_pass log_fail log_section assert_contains assert_status assert_json_field assert_json_has

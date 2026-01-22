@@ -33,11 +33,7 @@ RESPONSE=$(curl -s -X POST "$API_URL/v1/discovery:routes" \
     -H "Content-Type: application/json" \
     -d @/tmp/xds_routes.json)
 
-if echo "$RESPONSE" | grep -q '"status".*"ACK"'; then
-    log_pass "Dynamic route addition (ACK)"
-else
-    log_fail "Dynamic route addition failed: $RESPONSE"
-fi
+assert_json_field "Dynamic route addition (ACK)" "$RESPONSE" ".status" "ACK"
 
 sleep 0.3  # Wait for config to take effect
 

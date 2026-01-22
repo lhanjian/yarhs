@@ -72,7 +72,37 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
   }'
 ```
 
-### 6. 高性能
+### 6. 访问日志格式化
+- ✅ **多种格式** - combined (Apache/Nginx)、common (CLF)、json、自定义
+- ✅ **自定义模式** - 使用变量定义你自己的日志格式
+- ✅ **请求计时** - 日志中包含请求处理时间
+- ✅ **动态配置** - 通过 API 运行时修改格式
+
+```bash
+# 支持的格式
+# combined: Apache/Nginx 组合格式（默认）
+# common: 通用日志格式 (CLF)
+# json: JSON 结构化日志
+# custom: 自定义变量模式
+
+# 通过 API 配置
+curl -X POST http://localhost:8000/v1/discovery:logging \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resources": [{
+      "level": "info",
+      "access_log": true,
+      "access_log_format": "json"
+    }]
+  }'
+
+# 自定义格式变量:
+# $remote_addr, $time_local, $time_iso8601, $request, $request_method
+# $request_uri, $status, $body_bytes_sent, $http_referer
+# $http_user_agent, $request_time
+```
+
+### 7. 高性能
 - **40k+ QPS** (静态文件)
 - **63k+ QPS** (API 接口)
 - 全异步 I/O，基于 Tokio + Hyper

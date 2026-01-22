@@ -129,6 +129,14 @@ pub struct LoggingConfig {
     pub level: String,
     pub access_log: bool,
     pub show_headers: bool,
+    /// Access log format (combined, common, json, or custom pattern)
+    #[serde(default = "default_access_log_format")]
+    pub access_log_format: String,
+}
+
+#[allow(clippy::missing_const_for_fn)]
+fn default_access_log_format() -> String {
+    "combined".to_string()
 }
 
 /// Performance configuration

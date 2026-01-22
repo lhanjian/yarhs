@@ -1,5 +1,15 @@
+//! Logger module
+//!
+//! Provides logging utilities for the HTTP server including:
+//! - Server lifecycle logging
+//! - Access logging with multiple formats
+//! - Error and warning logging
+
+mod format;
+
+pub use format::AccessLogEntry;
+
 use crate::config::Config;
-use hyper::{Method, Uri, Version};
 use std::net::SocketAddr;
 
 pub fn log_server_start(addr: &SocketAddr, config: &Config) {
@@ -38,18 +48,15 @@ pub fn log_warning(message: &str) {
     eprintln!("[WARN] {message}");
 }
 
-pub fn log_request(method: &Method, uri: &Uri, version: Version) {
-    println!("[Request] {method} {uri} {version:?}");
-}
-
 pub fn log_headers_count(count: usize, show: bool) {
     if show {
         println!("[Headers] Count: {count}");
     }
 }
 
-pub fn log_response(size: usize) {
-    println!("[Response] Sent 200 OK ({size} bytes)\n");
+/// Log formatted access log entry
+pub fn log_access(entry: &AccessLogEntry, format: &str) {
+    println!("{}", entry.format(format));
 }
 
 pub fn log_api_request(method: &str, path: &str, status: u16) {
