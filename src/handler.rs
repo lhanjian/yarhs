@@ -3,7 +3,7 @@ use crate::logger;
 use crate::response;
 use http_body_util::Full;
 use hyper::body::Bytes;
-use hyper::{Request, Response};
+use hyper::{Method, Request, Response};
 use std::convert::Infallible;
 use std::sync::Arc;
 
@@ -23,6 +23,24 @@ pub async fn handle_request(
 
     if access_log {
         logger::log_request(method, uri, version);
+    }
+
+    // Check HTTP method - only allow GET, HEAD, OPTIONS for static file server
+    let is_head = *method == Method::HEAD;
+    match method {
+        &Method::GET | &Method::HEAD => {
+            // Continue processing
+        }
+        &Method::OPTIONS => {
+            // Handle OPTIONS for CORS preflight
+            let enable_cors = state.config.http.enable_cors;
+            return Ok(response::build_options_response(enable_cors));
+        }
+        _ => {
+            // Method not allowed for static file server
+            logger::log_warning(&format!("Method not allowed: {method}"));
+            return Ok(response::build_405_response());
+        }
     }
 
     // Extract If-None-Match header for ETag validation
@@ -81,7 +99,7 @@ pub async fn handle_request(
                 if access_log {
                     logger::log_response(size);
                 }
-                response::build_favicon_response(favicon_data, if_none_match.as_deref())
+                response::build_favicon_response(favicon_data, if_none_match.as_deref(), is_head)
             })
     } else if let Some(handler) = routes.custom_routes.get(path) {
         // 2. Custom routes (exact match)
@@ -93,6 +111,7 @@ pub async fn handle_request(
             path,
             &routes.index_files,
             if_none_match.as_deref(),
+            is_head,
         )
         .await
     } else if let Some((prefix, handler)) = routes
@@ -109,6 +128,7 @@ pub async fn handle_request(
             prefix,
             &routes.index_files,
             if_none_match.as_deref(),
+            is_head,
         )
         .await
     } else {
@@ -120,7 +140,7 @@ pub async fn handle_request(
 
         let html = response::get_default_homepage();
         let html_len = html.len();
-        let resp = response::build_html_response(html, &http_config);
+        let resp = response::build_html_response(html, &http_config, is_head);
 
         if access_log {
             logger::log_response(html_len);
@@ -139,6 +159,7 @@ async fn handle_custom_route(
     route_prefix: &str,
     index_files: &[String],
     if_none_match: Option<&str>,
+    is_head: bool,
 ) -> Response<Full<Bytes>> {
     match handler {
         RouteHandler::Dir { path: dir } => {
@@ -150,7 +171,7 @@ async fn handle_custom_route(
                 if access_log {
                     logger::log_response(size);
                 }
-                response::build_static_file_response(content, content_type, if_none_match)
+                response::build_static_file_response(content, content_type, if_none_match, is_head)
             } else {
                 response::build_404_response()
             }
@@ -162,7 +183,7 @@ async fn handle_custom_route(
                 if access_log {
                     logger::log_response(size);
                 }
-                response::build_static_file_response(content, content_type, if_none_match)
+                response::build_static_file_response(content, content_type, if_none_match, is_head)
             } else {
                 response::build_404_response()
             }

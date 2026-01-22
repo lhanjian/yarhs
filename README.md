@@ -40,7 +40,13 @@ curl -X POST http://localhost:8000/v1/discovery:logging \
 - **ETag Support** - Content hash-based ETag generation
 - **Conditional Requests** - Returns 304 Not Modified when If-None-Match matches
 
-### 4. High Performance
+### 4. HTTP Method Handling (Nginx-style)
+- ✅ **GET** - Return file content normally
+- ✅ **HEAD** - Return headers only (with Content-Length), no body
+- ✅ **OPTIONS** - Return 204 with Allow header, CORS preflight support
+- ❌ **POST/PUT/DELETE** - Return 405 Method Not Allowed with Allow header
+
+### 5. High Performance
 - **40k+ QPS** (static files)
 - **63k+ QPS** (API endpoints)
 - Fully async I/O, built on Tokio + Hyper
@@ -261,6 +267,15 @@ Benchmark results (wrk 4 threads, 100 connections, 30 seconds):
 
 ## 📝 Changelog
 
+### v0.3.0 (2026-01-22)
+
+- ✨ Add HTTP method handling (Nginx-style)
+  - GET: Normal response with body
+  - HEAD: Headers only, no body (with Content-Length)
+  - OPTIONS: 204 response with Allow header, CORS preflight support
+  - Other methods: 405 Method Not Allowed
+- 📚 Update documentation and test scripts
+
 ### v0.2.1 (2026-01-14)
 
 - ✨ Add default document (index_files) support
@@ -299,4 +314,4 @@ MIT License
 
 **Status**: ✅ Production Ready | 🚀 Actively Maintained
 
-**Last Updated**: 2026-01-14
+**Last Updated**: 2026-01-22

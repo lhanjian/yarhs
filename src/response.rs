@@ -272,18 +272,26 @@ pub fn get_default_homepage() -> String {
     )
 }
 
-pub fn build_html_response(html: String, http_config: &Arc<HttpConfig>) -> Response<Full<Bytes>> {
+pub fn build_html_response(html: String, http_config: &Arc<HttpConfig>, is_head: bool) -> Response<Full<Bytes>> {
     let mut builder = Response::builder()
         .status(200)
         .header("Content-Type", &http_config.default_content_type)
+        .header("Content-Length", html.len())
         .header("Server", &http_config.server_name);
 
     if http_config.enable_cors {
         builder = builder.header("Access-Control-Allow-Origin", "*");
     }
 
+    // HEAD request: return headers only, no body
+    let body = if is_head {
+        Bytes::new()
+    } else {
+        Bytes::from(html)
+    };
+
     builder
-        .body(Full::new(Bytes::from(html)))
+        .body(Full::new(body))
         .unwrap_or_else(|e| {
             crate::logger::log_error(&format!("Failed to build HTML response: {e}"));
             Response::new(Full::new(Bytes::from("Internal Server Error")))
@@ -295,19 +303,27 @@ pub async fn load_favicon() -> Option<Vec<u8>> {
 }
 
 /// Build favicon response with `ETag` conditional check
-pub fn build_favicon_response(data: Vec<u8>, if_none_match: Option<&str>) -> Response<Full<Bytes>> {
+pub fn build_favicon_response(data: Vec<u8>, if_none_match: Option<&str>, is_head: bool) -> Response<Full<Bytes>> {
     let etag = generate_etag(&data);
 
     if check_etag_match(if_none_match, &etag) {
         return build_304_response(&etag);
     }
 
+    // HEAD request: return headers only, no body
+    let body = if is_head {
+        Bytes::new()
+    } else {
+        Bytes::from(data.clone())
+    };
+
     Response::builder()
         .status(200)
         .header("Content-Type", "image/svg+xml")
+        .header("Content-Length", data.len())
         .header("ETag", etag)
         .header("Cache-Control", "public, max-age=86400")
-        .body(Full::new(Bytes::from(data)))
+        .body(Full::new(body))
         .unwrap_or_else(|e| {
             crate::logger::log_error(&format!("Failed to build favicon response: {e}"));
             Response::new(Full::new(Bytes::new()))
@@ -341,6 +357,7 @@ pub fn build_static_file_response(
     data: Vec<u8>,
     content_type: &str,
     if_none_match: Option<&str>,
+    is_head: bool,
 ) -> Response<Full<Bytes>> {
     let etag = generate_etag(&data);
 
@@ -349,12 +366,20 @@ pub fn build_static_file_response(
         return build_304_response(&etag);
     }
 
+    // HEAD request: return headers only, no body
+    let body = if is_head {
+        Bytes::new()
+    } else {
+        Bytes::from(data.clone())
+    };
+
     Response::builder()
         .status(200)
         .header("Content-Type", content_type)
+        .header("Content-Length", data.len())
         .header("ETag", etag)
         .header("Cache-Control", "public, max-age=3600")
-        .body(Full::new(Bytes::from(data)))
+        .body(Full::new(body))
         .unwrap_or_else(|e| {
             crate::logger::log_error(&format!("Failed to build static file response: {e}"));
             Response::new(Full::new(Bytes::new()))
@@ -368,6 +393,42 @@ pub fn build_redirect_response(target: &str) -> Response<Full<Bytes>> {
         .body(Full::new(Bytes::from("")))
         .unwrap_or_else(|e| {
             crate::logger::log_error(&format!("Failed to build redirect response: {e}"));
+            Response::new(Full::new(Bytes::new()))
+        })
+}
+
+/// Build 405 Method Not Allowed response
+pub fn build_405_response() -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(405)
+        .header("Content-Type", "text/plain")
+        .header("Allow", "GET, HEAD, OPTIONS")
+        .body(Full::new(Bytes::from("Method Not Allowed")))
+        .unwrap_or_else(|e| {
+            crate::logger::log_error(&format!("Failed to build 405 response: {e}"));
+            Response::new(Full::new(Bytes::from("Method Not Allowed")))
+        })
+}
+
+/// Build OPTIONS response for CORS preflight
+pub fn build_options_response(enable_cors: bool) -> Response<Full<Bytes>> {
+    let mut builder = Response::builder()
+        .status(204)
+        .header("Allow", "GET, HEAD, OPTIONS")
+        .header("Content-Length", "0");
+
+    if enable_cors {
+        builder = builder
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+            .header("Access-Control-Allow-Headers", "Content-Type, If-None-Match")
+            .header("Access-Control-Max-Age", "86400");
+    }
+
+    builder
+        .body(Full::new(Bytes::new()))
+        .unwrap_or_else(|e| {
+            crate::logger::log_error(&format!("Failed to build OPTIONS response: {e}"));
             Response::new(Full::new(Bytes::new()))
         })
 }

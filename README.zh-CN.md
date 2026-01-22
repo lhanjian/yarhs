@@ -40,7 +40,13 @@ curl -X POST http://localhost:8000/v1/discovery:logging \
 - **ETag 支持** - 基于内容哈希的 ETag 生成
 - **条件请求** - If-None-Match 匹配时返回 304 Not Modified
 
-### 4. 高性能
+### 4. HTTP 方法处理（Nginx 风格）
+- ✅ **GET** - 正常返回文件内容
+- ✅ **HEAD** - 仅返回响应头（含 Content-Length），无 body
+- ✅ **OPTIONS** - 返回 204 + Allow 头，支持 CORS 预检
+- ❌ **POST/PUT/DELETE** - 返回 405 Method Not Allowed + Allow 头
+
+### 5. 高性能
 - **40k+ QPS** (静态文件)
 - **63k+ QPS** (API 接口)
 - 全异步 I/O，基于 Tokio + Hyper
@@ -261,6 +267,15 @@ ab -n 10000 -c 100 http://127.0.0.1:8080/
 
 ## 📝 更新日志
 
+### v0.3.0 (2026-01-22) 🆕
+
+- ✨ 新增 HTTP 方法处理（Nginx 风格）
+  - GET: 正常返回响应体
+  - HEAD: 仅返回头部，无 body（含 Content-Length）
+  - OPTIONS: 返回 204 + Allow 头，支持 CORS 预检
+  - 其他方法: 返回 405 Method Not Allowed
+- 📚 更新文档和测试脚本
+
 ### v0.2.0 (2026-01-07) 🆕
 
 - ✨ 新增动态路由配置功能
@@ -299,4 +314,4 @@ MIT License
 
 **项目状态**: ✅ 生产就绪 | 🚀 持续优化
 
-**最后更新**: 2026-01-14
+**最后更新**: 2026-01-22
