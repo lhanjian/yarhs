@@ -56,6 +56,7 @@ pub async fn handle_snapshot(state: Arc<AppState>) -> Result<Response<Full<Bytes
                     favicon_paths: dynamic_config.routes.favicon_paths.clone(),
                     index_files: dynamic_config.routes.index_files.clone(),
                     custom_routes: dynamic_config.routes.custom_routes.clone(),
+                    health: dynamic_config.routes.health.clone(),
                 },
             },
             http: VersionedValue {

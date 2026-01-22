@@ -46,7 +46,33 @@ curl -X POST http://localhost:8000/v1/discovery:logging \
 - ✅ **OPTIONS** - 返回 204 + Allow 头，支持 CORS 预检
 - ❌ **POST/PUT/DELETE** - 返回 405 Method Not Allowed + Allow 头
 
-### 5. 高性能
+### 5. 健康检查端点
+- ✅ **存活探针** - `/healthz` 端点用于 Kubernetes 存活检查
+- ✅ **就绪探针** - `/readyz` 端点用于就绪检查
+- ✅ **路径可配置** - 通过配置文件或 API 自定义端点路径
+- ✅ **无缓存响应头** - 健康检查响应包含正确的缓存控制
+- ✅ **动态开关** - 运行时启用/禁用健康检查端点
+
+```bash
+# 内置健康检查端点
+curl http://localhost:8080/healthz   # 存活探针 -> "ok"
+curl http://localhost:8080/readyz    # 就绪探针 -> "ok"
+
+# 通过 API 配置自定义路径
+curl -X POST http://localhost:8000/v1/discovery:routes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resources": [{
+      "health": {
+        "enabled": true,
+        "liveness_path": "/health/live",
+        "readiness_path": "/health/ready"
+      }
+    }]
+  }'
+```
+
+### 6. 高性能
 - **40k+ QPS** (静态文件)
 - **63k+ QPS** (API 接口)
 - 全异步 I/O，基于 Tokio + Hyper
@@ -282,7 +308,7 @@ ab -n 10000 -c 100 http://127.0.0.1:8080/
 - ✨ 支持 3 种路由类型（File、Dir、Redirect）
 - ✨ 通过 API 运行时修改路由
 - 📚 新增 ROUTES.md 路由配置文档
-- 🧪 新增 test_routes.sh 测试脚本
+- 🧪 新增集成测试套件
 
 ### v0.2.1 (2026-01-14)
 

@@ -76,6 +76,7 @@ echo "║    ✓ xDS API Endpoints                    ║"
 echo "║    ✓ Dynamic Route Configuration          ║"
 echo "║    ✓ Root Path Mapping                    ║"
 echo "║    ✓ Concurrent Requests                  ║"
+echo "║    ✓ Health Check Endpoints               ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 

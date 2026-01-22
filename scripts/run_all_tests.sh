@@ -28,9 +28,21 @@ echo ""
 ERRORS=0
 
 # ============================================
-# Phase 1: Unit Tests
+# Phase 1: Clippy Lint Check
 # ============================================
-log_section "Phase 1/3: Unit Tests (cargo test)"
+log_section "Phase 1/4: Clippy Lint Check"
+
+if cargo clippy --all-targets --all-features -- -D warnings 2>&1; then
+    log_pass "Clippy check passed"
+else
+    log_fail "Clippy check failed"
+    ERRORS=$((ERRORS + 1))
+fi
+
+# ============================================
+# Phase 2: Unit Tests
+# ============================================
+log_section "Phase 2/4: Unit Tests (cargo test)"
 
 if cargo test --all 2>&1; then
     log_pass "Unit tests passed"
@@ -40,9 +52,9 @@ else
 fi
 
 # ============================================
-# Phase 2: Build Release Version
+# Phase 3: Build Release Version
 # ============================================
-log_section "Phase 2/3: Build Release Version"
+log_section "Phase 3/4: Build Release Version"
 
 if cargo build --release 2>&1; then
     log_pass "Release build successful"
@@ -52,9 +64,9 @@ else
 fi
 
 # ============================================
-# Phase 3: Integration Tests
+# Phase 4: Integration Tests
 # ============================================
-log_section "Phase 3/3: Integration Tests"
+log_section "Phase 4/4: Integration Tests"
 
 chmod +x "$SCRIPT_DIR/integration_tests.sh"
 if "$SCRIPT_DIR/integration_tests.sh"; then

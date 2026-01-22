@@ -17,6 +17,7 @@ pub struct RequestContext<'a> {
     pub path: &'a str,
     pub is_head: bool,
     pub if_none_match: Option<String>,
+    pub if_modified_since: Option<String>,
     pub range_header: Option<String>,
     pub access_log: bool,
 }
@@ -59,6 +60,11 @@ pub async fn handle_request(
         if_none_match: req
             .headers()
             .get("if-none-match")
+            .and_then(|v| v.to_str().ok())
+            .map(ToString::to_string),
+        if_modified_since: req
+            .headers()
+            .get("if-modified-since")
             .and_then(|v| v.to_str().ok())
             .map(ToString::to_string),
         range_header: req
@@ -126,6 +132,17 @@ async fn route_request(
     routes: &Arc<RoutesConfig>,
     state: &Arc<AppState>,
 ) -> Response<Full<Bytes>> {
+    // 0. Health check endpoints (highest priority, always fast)
+    if routes.health.enabled {
+        if ctx.path == routes.health.liveness_path {
+            return http::build_health_response("ok");
+        }
+        if ctx.path == routes.health.readiness_path {
+            // Readiness can include additional checks in the future
+            return http::build_health_response("ok");
+        }
+    }
+
     // 1. Favicon routes
     if routes.favicon_paths.iter().any(|p| ctx.path == p) {
         return static_files::serve_favicon(ctx).await;

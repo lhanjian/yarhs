@@ -1,6 +1,7 @@
 //! Static file serving module
 //!
 //! Handles static file loading, MIME type detection, and response building.
+//! Implements the "mtime-first" optimization for conditional requests.
 
 use crate::handler::router::RequestContext;
 use crate::http::{self, cache, mime, range::RangeParseResult};
@@ -9,6 +10,7 @@ use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::Response;
 use std::path::Path;
+use std::time::SystemTime;
 use tokio::fs;
 
 const FAVICON_PATH: &str = "static/favicon.svg";
@@ -27,59 +29,168 @@ pub async fn serve_favicon(ctx: &RequestContext<'_>) -> Response<Full<Bytes>> {
 }
 
 /// Serve static files from a directory
+///
+/// Implements the "mtime-first" optimization:
+/// 1. Check file metadata (mtime) first - cheap I/O
+/// 2. If If-Modified-Since matches, return 304 without reading file content
+/// 3. Only read file content when necessary
 pub async fn serve_directory(
     ctx: &RequestContext<'_>,
     dir: &str,
     route_prefix: &str,
     index_files: &[String],
 ) -> Response<Full<Bytes>> {
-    match load_from_directory(dir, ctx.path, route_prefix, index_files).await {
-        Some((content, content_type)) => {
-            if ctx.access_log {
-                logger::log_response(content.len());
-            }
-            build_static_file_response(
-                &content,
-                content_type,
-                ctx.if_none_match.as_deref(),
-                ctx.is_head,
-                ctx.range_header.as_deref(),
-            )
-        }
+    match load_from_directory_optimized(
+        dir,
+        ctx.path,
+        route_prefix,
+        index_files,
+        ctx.if_modified_since.as_deref(),
+        ctx.if_none_match.as_deref(),
+        ctx.is_head,
+        ctx.range_header.as_deref(),
+        ctx.access_log,
+    )
+    .await
+    {
+        Some(response) => response,
         None => http::build_404_response(),
     }
 }
 
 /// Serve a single file
+///
+/// Implements the "mtime-first" optimization for conditional requests.
 pub async fn serve_file(ctx: &RequestContext<'_>, file_path: &str) -> Response<Full<Bytes>> {
-    match load_single_file(file_path).await {
-        Some((content, content_type)) => {
-            if ctx.access_log {
-                logger::log_response(content.len());
-            }
-            build_static_file_response(
-                &content,
-                content_type,
-                ctx.if_none_match.as_deref(),
-                ctx.is_head,
-                ctx.range_header.as_deref(),
-            )
-        }
+    match load_single_file_optimized(
+        file_path,
+        ctx.if_modified_since.as_deref(),
+        ctx.if_none_match.as_deref(),
+        ctx.is_head,
+        ctx.range_header.as_deref(),
+        ctx.access_log,
+    )
+    .await
+    {
+        Some(response) => response,
         None => http::build_404_response(),
     }
 }
 
-/// Load static file from directory with index file support
-pub async fn load_from_directory(
+/// Optimized directory loading with mtime-first check
+///
+/// This function checks file modification time before reading content,
+/// allowing early 304 responses without file I/O.
+#[allow(clippy::too_many_arguments)]
+async fn load_from_directory_optimized(
     static_dir: &str,
     path: &str,
     route_prefix: &str,
     index_files: &[String],
-) -> Option<(Vec<u8>, &'static str)> {
-    // Remove leading slash and prevent directory traversal
-    let clean_path = path.trim_start_matches('/').replace("..", "");
+    if_modified_since: Option<&str>,
+    if_none_match: Option<&str>,
+    is_head: bool,
+    range_header: Option<&str>,
+    access_log: bool,
+) -> Option<Response<Full<Bytes>>> {
+    // Resolve file path (reuse existing logic)
+    let file_path = resolve_file_path(static_dir, path, route_prefix, index_files)?;
+    let content_type = mime::get_content_type(file_path.extension().and_then(|e| e.to_str()));
 
-    // Remove route prefix from path
+    // Step 1: Get file metadata (cheap I/O - only reads inode)
+    let metadata = fs::metadata(&file_path).await.ok()?;
+    let mtime = metadata.modified().ok()?;
+    let last_modified = cache::format_http_date(mtime);
+
+    // Step 2: Fast path - check If-Modified-Since first
+    if cache::check_not_modified_since(if_modified_since, mtime) {
+        // File hasn't changed, return 304 without reading content
+        // Generate ETag from mtime for consistency
+        let etag = format!("\"{}\"", mtime_to_etag(mtime));
+        return Some(http::response::build_304_response_with_mtime(&etag, &last_modified));
+    }
+
+    // Step 3: Slow path - read file content
+    let content = fs::read(&file_path).await.ok()?;
+
+    if access_log {
+        logger::log_response(content.len());
+    }
+
+    // Generate content-based ETag for accuracy
+    let etag = cache::generate_etag(&content);
+
+    // Check ETag match (client might have used If-None-Match)
+    if cache::check_etag_match(if_none_match, &etag) {
+        return Some(http::response::build_304_response_with_mtime(&etag, &last_modified));
+    }
+
+    // Build full response with Last-Modified header
+    Some(build_static_file_response_with_mtime(
+        &content,
+        content_type,
+        &etag,
+        &last_modified,
+        is_head,
+        range_header,
+    ))
+}
+
+/// Optimized single file loading with mtime-first check
+#[allow(clippy::too_many_arguments)]
+async fn load_single_file_optimized(
+    file_path: &str,
+    if_modified_since: Option<&str>,
+    if_none_match: Option<&str>,
+    is_head: bool,
+    range_header: Option<&str>,
+    access_log: bool,
+) -> Option<Response<Full<Bytes>>> {
+    let path = Path::new(file_path);
+    let content_type = mime::get_content_type(path.extension().and_then(|e| e.to_str()));
+
+    // Step 1: Get file metadata
+    let metadata = fs::metadata(path).await.ok()?;
+    let mtime = metadata.modified().ok()?;
+    let last_modified = cache::format_http_date(mtime);
+
+    // Step 2: Fast path - check If-Modified-Since
+    if cache::check_not_modified_since(if_modified_since, mtime) {
+        let etag = format!("\"{}\"", mtime_to_etag(mtime));
+        return Some(http::response::build_304_response_with_mtime(&etag, &last_modified));
+    }
+
+    // Step 3: Slow path - read content
+    let content = fs::read(path).await.ok()?;
+
+    if access_log {
+        logger::log_response(content.len());
+    }
+
+    let etag = cache::generate_etag(&content);
+
+    if cache::check_etag_match(if_none_match, &etag) {
+        return Some(http::response::build_304_response_with_mtime(&etag, &last_modified));
+    }
+
+    Some(build_static_file_response_with_mtime(
+        &content,
+        content_type,
+        &etag,
+        &last_modified,
+        is_head,
+        range_header,
+    ))
+}
+
+/// Resolve file path from request, handling index files
+fn resolve_file_path(
+    static_dir: &str,
+    path: &str,
+    route_prefix: &str,
+    index_files: &[String],
+) -> Option<std::path::PathBuf> {
+    let clean_path = path.trim_start_matches('/').replace("..", "");
     let prefix_clean = route_prefix.trim_matches('/');
     let relative_path = if prefix_clean.is_empty() {
         clean_path.as_str()
@@ -91,18 +202,8 @@ pub async fn load_from_directory(
 
     let mut file_path = Path::new(static_dir).join(relative_path);
 
-    // Security: ensure file_path is within static_dir
-    let static_dir_canonical = match Path::new(static_dir).canonicalize() {
-        Ok(p) => p,
-        Err(e) => {
-            logger::log_warning(&format!(
-                "Static directory not found or inaccessible '{static_dir}': {e}"
-            ));
-            return None;
-        }
-    };
+    let static_dir_canonical = Path::new(static_dir).canonicalize().ok()?;
 
-    // Check if path is a directory, try index files
     if file_path.is_dir() || relative_path.is_empty() || relative_path.ends_with('/') {
         for index_file in index_files {
             let index_path = file_path.join(index_file);
@@ -113,10 +214,7 @@ pub async fn load_from_directory(
         }
     }
 
-    // File not found is common (404), no need to log at warning level
-    let Ok(file_path_canonical) = file_path.canonicalize() else {
-        return None;
-    };
+    let file_path_canonical = file_path.canonicalize().ok()?;
     if !file_path_canonical.starts_with(&static_dir_canonical) {
         logger::log_warning(&format!(
             "Path traversal attempt blocked: {} -> {}",
@@ -126,30 +224,13 @@ pub async fn load_from_directory(
         return None;
     }
 
-    let content = match fs::read(&file_path).await {
-        Ok(c) => c,
-        Err(e) => {
-            logger::log_error(&format!(
-                "Failed to read file '{}': {}",
-                file_path.display(),
-                e
-            ));
-            return None;
-        }
-    };
-
-    // Determine content type from extension
-    let content_type = mime::get_content_type(file_path.extension().and_then(|e| e.to_str()));
-
-    Some((content, content_type))
+    Some(file_path_canonical)
 }
 
-/// Load a single file
-pub async fn load_single_file(file_path: &str) -> Option<(Vec<u8>, &'static str)> {
-    let path = Path::new(file_path);
-    let content = fs::read(path).await.ok()?;
-    let content_type = mime::get_content_type(path.extension().and_then(|e| e.to_str()));
-    Some((content, content_type))
+/// Convert mtime to a simple `ETag` (for mtime-only 304 responses)
+fn mtime_to_etag(mtime: SystemTime) -> String {
+    let duration = mtime.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
+    format!("{:x}", duration.as_secs())
 }
 
 /// Load favicon
@@ -301,21 +382,16 @@ fn build_favicon_response(
         })
 }
 
-/// Build static file response with `ETag` and Range support
-fn build_static_file_response(
+/// Build static file response with `Last-Modified` support (optimized path)
+fn build_static_file_response_with_mtime(
     data: &[u8],
     content_type: &str,
-    if_none_match: Option<&str>,
+    etag: &str,
+    last_modified: &str,
     is_head: bool,
     range_header: Option<&str>,
 ) -> Response<Full<Bytes>> {
-    let etag = cache::generate_etag(data);
     let total_size = data.len();
-
-    // Check if client has cached version
-    if cache::check_etag_match(if_none_match, &etag) {
-        return http::build_304_response(&etag);
-    }
 
     // Check for Range request
     match http::parse_range_header(range_header, total_size) {
@@ -332,7 +408,8 @@ fn build_static_file_response(
             return http::response::build_partial_response(
                 body,
                 content_type,
-                &etag,
+                etag,
+                Some(last_modified),
                 start,
                 end,
                 total_size,
@@ -354,5 +431,5 @@ fn build_static_file_response(
         Bytes::from(data.to_owned())
     };
 
-    http::response::build_cached_response(body, content_type, &etag, is_head)
+    http::response::build_cached_response(body, content_type, etag, Some(last_modified), is_head)
 }

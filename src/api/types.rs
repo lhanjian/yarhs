@@ -1,7 +1,9 @@
 // API types module
 // Request/response types for xDS Discovery API
 
-use crate::config::{DynamicPerformanceConfig, HttpConfig, LoggingConfig, RouteHandler};
+use crate::config::{
+    DynamicPerformanceConfig, HealthConfig, HttpConfig, LoggingConfig, RouteHandler,
+};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -73,4 +75,5 @@ pub struct RouteResource {
     pub favicon_paths: Vec<String>,
     pub index_files: Vec<String>,
     pub custom_routes: HashMap<String, RouteHandler>,
+    pub health: HealthConfig,
 }

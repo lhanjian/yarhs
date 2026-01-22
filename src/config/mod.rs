@@ -11,7 +11,7 @@ use std::sync::Arc;
 // Re-export public types
 pub use state::AppState;
 pub use types::{
-    Config, DynamicConfig, DynamicPerformanceConfig, DynamicServerConfig, HttpConfig,
+    Config, DynamicConfig, DynamicPerformanceConfig, DynamicServerConfig, HealthConfig, HttpConfig,
     LoggingConfig, RouteHandler, RoutesConfig,
 };
 pub use version::ResourceType;

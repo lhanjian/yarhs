@@ -19,6 +19,20 @@ pub fn build_304_response(etag: &str) -> Response<Full<Bytes>> {
         })
 }
 
+/// Build 304 Not Modified response with Last-Modified
+pub fn build_304_response_with_mtime(etag: &str, last_modified: &str) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(304)
+        .header("ETag", etag)
+        .header("Last-Modified", last_modified)
+        .header("Cache-Control", "public, max-age=3600")
+        .body(Full::new(Bytes::new()))
+        .unwrap_or_else(|e| {
+            log_build_error("304", &e);
+            Response::new(Full::new(Bytes::new()))
+        })
+}
+
 /// Build 404 Not Found response
 pub fn build_404_response() -> Response<Full<Bytes>> {
     Response::builder()
@@ -62,6 +76,19 @@ pub fn build_options_response(enable_cors: bool) -> Response<Full<Bytes>> {
         log_build_error("OPTIONS", &e);
         Response::new(Full::new(Bytes::new()))
     })
+}
+
+/// Build health check response (200 OK with status text)
+pub fn build_health_response(status: &str) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(200)
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .header("Cache-Control", "no-cache, no-store, must-revalidate")
+        .body(Full::new(Bytes::from(status.to_string())))
+        .unwrap_or_else(|e| {
+            log_build_error("health", &e);
+            Response::new(Full::new(Bytes::from("error")))
+        })
 }
 
 /// Build 413 Payload Too Large response
@@ -127,30 +154,37 @@ pub fn build_cached_response(
     data: Bytes,
     content_type: &str,
     etag: &str,
+    last_modified: Option<&str>,
     is_head: bool,
 ) -> Response<Full<Bytes>> {
     let content_length = data.len();
     let body = if is_head { Bytes::new() } else { data };
 
-    Response::builder()
+    let mut builder = Response::builder()
         .status(200)
         .header("Content-Type", content_type)
         .header("Content-Length", content_length)
         .header("Accept-Ranges", "bytes")
         .header("ETag", etag)
-        .header("Cache-Control", "public, max-age=3600")
-        .body(Full::new(body))
-        .unwrap_or_else(|e| {
-            log_build_error("200", &e);
-            Response::new(Full::new(Bytes::new()))
-        })
+        .header("Cache-Control", "public, max-age=3600");
+
+    if let Some(mtime) = last_modified {
+        builder = builder.header("Last-Modified", mtime);
+    }
+
+    builder.body(Full::new(body)).unwrap_or_else(|e| {
+        log_build_error("200", &e);
+        Response::new(Full::new(Bytes::new()))
+    })
 }
 
 /// Build 206 Partial Content response
+#[allow(clippy::too_many_arguments)]
 pub fn build_partial_response(
     data: Bytes,
     content_type: &str,
     etag: &str,
+    last_modified: Option<&str>,
     start: usize,
     end: usize,
     total_size: usize,
@@ -159,19 +193,23 @@ pub fn build_partial_response(
     let content_length = end - start + 1;
     let body = if is_head { Bytes::new() } else { data };
 
-    Response::builder()
+    let mut builder = Response::builder()
         .status(206)
         .header("Content-Type", content_type)
         .header("Content-Length", content_length)
         .header("Content-Range", format!("bytes {start}-{end}/{total_size}"))
         .header("Accept-Ranges", "bytes")
         .header("ETag", etag)
-        .header("Cache-Control", "public, max-age=3600")
-        .body(Full::new(body))
-        .unwrap_or_else(|e| {
-            log_build_error("206", &e);
-            Response::new(Full::new(Bytes::new()))
-        })
+        .header("Cache-Control", "public, max-age=3600");
+
+    if let Some(mtime) = last_modified {
+        builder = builder.header("Last-Modified", mtime);
+    }
+
+    builder.body(Full::new(body)).unwrap_or_else(|e| {
+        log_build_error("206", &e);
+        Response::new(Full::new(Bytes::new()))
+    })
 }
 
 /// Log response build error

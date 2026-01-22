@@ -46,6 +46,11 @@ SERVER_HTTP__ENABLE_CORS=true cargo run
 - `routes.index_files` - Default document filenames (default: ["index.html", "index.htm"])
 - `routes.custom_routes` - Custom route definitions (see [ROUTES.md](ROUTES.md))
 
+### Health Check Configuration
+- `routes.health.enabled` - Enable health check endpoints (default: true)
+- `routes.health.liveness_path` - Liveness probe path (default: "/healthz")
+- `routes.health.readiness_path` - Readiness probe path (default: "/readyz")
+
 ## Examples
 
 ### Minimal config.toml
@@ -91,6 +96,11 @@ keep_alive_timeout = 60
 
 [routes]
 index_files = ["index.html"]
+
+[routes.health]
+enabled = true
+liveness_path = "/healthz"
+readiness_path = "/readyz"
 
 [routes.custom_routes]
 "/assets" = { type = "dir", path = "public/assets" }

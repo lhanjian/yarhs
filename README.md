@@ -46,7 +46,33 @@ curl -X POST http://localhost:8000/v1/discovery:logging \
 - ✅ **OPTIONS** - Return 204 with Allow header, CORS preflight support
 - ❌ **POST/PUT/DELETE** - Return 405 Method Not Allowed with Allow header
 
-### 5. High Performance
+### 5. Health Check Endpoints
+- ✅ **Liveness Probe** - `/healthz` endpoint for Kubernetes liveness checks
+- ✅ **Readiness Probe** - `/readyz` endpoint for readiness checks
+- ✅ **Configurable Paths** - Customize endpoint paths via config or API
+- ✅ **No-Cache Headers** - Proper cache control for health responses
+- ✅ **Dynamic Toggle** - Enable/disable health endpoints at runtime
+
+```bash
+# Built-in health check endpoints
+curl http://localhost:8080/healthz   # Liveness probe -> "ok"
+curl http://localhost:8080/readyz    # Readiness probe -> "ok"
+
+# Configure custom paths via API
+curl -X POST http://localhost:8000/v1/discovery:routes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resources": [{
+      "health": {
+        "enabled": true,
+        "liveness_path": "/health/live",
+        "readiness_path": "/health/ready"
+      }
+    }]
+  }'
+```
+
+### 6. High Performance
 - **40k+ QPS** (static files)
 - **63k+ QPS** (API endpoints)
 - Fully async I/O, built on Tokio + Hyper
@@ -292,7 +318,7 @@ Benchmark results (wrk 4 threads, 100 connections, 30 seconds):
 - ✨ Support 3 route types (File, Dir, Redirect)
 - ✨ Runtime route modification via API
 - 📚 Add ROUTES.md routing documentation
-- 🧪 Add test_routes.sh test script
+- 🧪 Add integration test suite
 
 ### v0.1.0 (2026-01-06)
 

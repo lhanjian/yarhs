@@ -40,6 +40,48 @@ pub struct RoutesConfig {
     pub favicon_paths: Vec<String>,
     pub index_files: Vec<String>,
     pub custom_routes: HashMap<String, RouteHandler>,
+    /// Health check configuration
+    #[serde(default)]
+    pub health: HealthConfig,
+}
+
+/// Health check configuration
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct HealthConfig {
+    /// Enable health check endpoints
+    #[serde(default = "default_health_enabled")]
+    pub enabled: bool,
+    /// Liveness probe path (default: /healthz)
+    #[serde(default = "default_healthz_path")]
+    pub liveness_path: String,
+    /// Readiness probe path (default: /readyz)
+    #[serde(default = "default_readyz_path")]
+    pub readiness_path: String,
+}
+
+#[allow(clippy::missing_const_for_fn)]
+fn default_health_enabled() -> bool {
+    true
+}
+
+#[allow(clippy::missing_const_for_fn)]
+fn default_healthz_path() -> String {
+    "/healthz".to_string()
+}
+
+#[allow(clippy::missing_const_for_fn)]
+fn default_readyz_path() -> String {
+    "/readyz".to_string()
+}
+
+impl Default for HealthConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_health_enabled(),
+            liveness_path: default_healthz_path(),
+            readiness_path: default_readyz_path(),
+        }
+    }
 }
 
 /// Route handler types
@@ -57,6 +99,7 @@ impl Default for RoutesConfig {
             favicon_paths: vec!["/favicon.ico".to_string(), "/favicon.svg".to_string()],
             index_files: vec!["index.html".to_string(), "index.htm".to_string()],
             custom_routes: HashMap::new(),
+            health: HealthConfig::default(),
         }
     }
 }

@@ -213,9 +213,9 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
 
 ```toml
 [routes.custom_routes]
-"/about" = { type = "file", path = "pages/about.html" }
-"/api-spec" = { type = "file", path = "docs/openapi.json" }
-"/assets" = { type = "dir", path = "public/assets" }
+"/about" = { type = "file", path = "templates/about.html" }
+"/api-spec" = { type = "file", path = "static/api.json" }
+"/assets" = { type = "dir", path = "static/assets" }
 "/old-docs" = { type = "redirect", target = "/docs" }
 ```
 

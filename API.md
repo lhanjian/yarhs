@@ -231,6 +231,39 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
   }'
 ```
 
+### 7. Configure Health Check Endpoints
+
+```bash
+# Update health check paths
+curl -X POST http://localhost:8000/v1/discovery:routes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resources": [{
+      "health": {
+        "enabled": true,
+        "liveness_path": "/health/live",
+        "readiness_path": "/health/ready"
+      }
+    }]
+  }'
+
+# Disable health check endpoints
+curl -X POST http://localhost:8000/v1/discovery:routes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resources": [{
+      "health": {
+        "enabled": false
+      }
+    }]
+  }'
+```
+
+**Health check endpoints:**
+- Liveness probe (default: `/healthz`) - Returns `200 OK` with body `"ok"`
+- Readiness probe (default: `/readyz`) - Returns `200 OK` with body `"ok"`
+- Headers: `Cache-Control: no-cache, no-store, must-revalidate`
+
 ---
 
 ## Resource Schemas
@@ -262,6 +295,11 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
       "path": "local/path",       // for file/dir
       "target": "https://..."     // for redirect
     }
+  },
+  "health": {
+    "enabled": true,
+    "liveness_path": "/healthz",
+    "readiness_path": "/readyz"
   }
 }
 ```
