@@ -1,37 +1,37 @@
-# 动态路由配置文档
+# Dynamic Routing Configuration
 
-## 概述
+## Overview
 
-本服务器支持动态路由配置，可以通过 API 在运行时修改路由规则，无需重启服务器（除非修改了 server 配置）。
+This server supports dynamic routing configuration, allowing you to modify routing rules via API at runtime without restarting the server (unless you modify server configuration).
 
-## 路由配置结构
+## Route Configuration Structure
 
-### 基础路由配置
+### Basic Route Configuration
 
 ```toml
 [routes]
-favicon_paths = ["/favicon.ico", "/favicon.svg"]  # Favicon 路径列表
-index_files = ["index.html", "index.htm"]         # 默认文档列表
+favicon_paths = ["/favicon.ico", "/favicon.svg"]  # Favicon path list
+index_files = ["index.html", "index.htm"]         # Default document list
 ```
 
-### 默认文档
+### Default Documents
 
-当访问目录路径时（如 `/static/` 或 `/`），服务器会自动查找 `index_files` 中配置的文件：
+When accessing a directory path (e.g., `/static/` or `/`), the server automatically looks for files configured in `index_files`:
 
 ```toml
 [routes]
 index_files = ["index.html", "index.htm"]
 ```
 
-**行为示例**：
-- 访问 `/static/` → 返回 `static/index.html`（如果存在）
-- 访问 `/` （配置 `"/" = { type = "dir", path = "public" }`）→ 返回 `public/index.html`
+**Behavior Examples**:
+- Access `/static/` → Returns `static/index.html` (if exists)
+- Access `/` (configured as `"/" = { type = "dir", path = "public" }`) → Returns `public/index.html`
 
-**查找顺序**：按配置列表顺序，找到第一个存在的文件即返回。
+**Lookup Order**: In configuration list order, returns the first existing file found.
 
-### 自定义路由
+### Custom Routes
 
-在 `config.toml` 中定义自定义路由：
+Define custom routes in `config.toml`:
 
 ```toml
 [routes.custom_routes]
@@ -40,11 +40,11 @@ index_files = ["index.html", "index.htm"]
 "/assets" = { type = "dir", path = "public/assets" }
 ```
 
-## 路由类型
+## Route Types
 
-### 1. File（单文件路由）
+### 1. File (Single File Route)
 
-返回指定的单个文件，自动根据扩展名识别 MIME 类型：
+Returns a specified single file, automatically detecting MIME type based on extension:
 
 ```json
 {
@@ -53,21 +53,21 @@ index_files = ["index.html", "index.htm"]
 }
 ```
 
-**支持的文件类型**：
-- HTML、CSS、JS、JSON
-- PNG、JPG、GIF、SVG、WebP、ICO
-- PDF、XML、TXT、MD
-- 字体文件（WOFF、WOFF2、TTF）
-- 音视频（MP4、WebM、MP3、WAV）
-- 其他文件返回 `application/octet-stream`
+**Supported File Types**:
+- HTML, CSS, JS, JSON
+- PNG, JPG, GIF, SVG, WebP, ICO
+- PDF, XML, TXT, MD
+- Font files (WOFF, WOFF2, TTF)
+- Audio/Video (MP4, WebM, MP3, WAV)
+- Other files return `application/octet-stream`
 
-**示例**：
-- 配置：`"/about" = { type = "file", path = "templates/about.html" }`
-- 访问：`/about` → 返回 `templates/about.html`
+**Example**:
+- Config: `"/about" = { type = "file", path = "templates/about.html" }`
+- Access: `/about` → Returns `templates/about.html`
 
-### 2. Dir（目录路由）
+### 2. Dir (Directory Route)
 
-将 URL 前缀映射到文件目录，支持前缀匹配和默认文档：
+Maps a URL prefix to a file directory, supporting prefix matching and default documents:
 
 ```json
 {
@@ -76,19 +76,19 @@ index_files = ["index.html", "index.htm"]
 }
 ```
 
-**特性**：
-- 支持前缀匹配（`/static/css/style.css` → `static/css/style.css`）
-- 支持默认文档（`/static/` → `static/index.html`）
-- 支持根路径映射（`"/" = { type = "dir", path = "public" }`）
+**Features**:
+- Prefix matching (`/static/css/style.css` → `static/css/style.css`)
+- Default documents (`/static/` → `static/index.html`)
+- Root path mapping (`"/" = { type = "dir", path = "public" }`)
 
-**示例**：
-- 配置：`"/static" = { type = "dir", path = "public/static" }`
-- 访问：`/static/css/style.css` → 读取 `public/static/css/style.css`
-- 访问：`/static/` → 读取 `public/static/index.html`（默认文档）
+**Example**:
+- Config: `"/static" = { type = "dir", path = "public/static" }`
+- Access: `/static/css/style.css` → Reads `public/static/css/style.css`
+- Access: `/static/` → Reads `public/static/index.html` (default document)
 
-### 3. Redirect（重定向路由）
+### 3. Redirect (Redirect Route)
 
-将请求重定向到另一个 URL：
+Redirects requests to another URL:
 
 ```json
 {
@@ -97,77 +97,77 @@ index_files = ["index.html", "index.htm"]
 }
 ```
 
-**示例**：
-- 配置：`"/old" = { type = "redirect", target = "/new" }`
-- 访问：`/old` → 302 重定向到 `/new`
+**Example**:
+- Config: `"/old" = { type = "redirect", target = "/new" }`
+- Access: `/old` → 302 redirect to `/new`
 
-## 路由优先级
+## Route Priority
 
-路由匹配按以下优先级顺序：
+Route matching follows this priority order:
 
-1. **Favicon 路由** - `favicon_paths` 列表中的精确路径
-2. **自定义路由（精确匹配）** - `custom_routes` 中的 file/redirect 类型
-3. **自定义路由（前缀匹配）** - `custom_routes` 中的 dir 类型
-4. **默认路由** - 返回默认主页
+1. **Favicon Routes** - Exact paths in `favicon_paths` list
+2. **Custom Routes (Exact Match)** - file/redirect types in `custom_routes`
+3. **Custom Routes (Prefix Match)** - dir type in `custom_routes`
+4. **Default Route** - Returns default homepage
 
-## ETag 与条件请求
+## ETag and Conditional Requests
 
-### ETag 机制
+### ETag Mechanism
 
-服务器为所有静态文件自动生成 ETag（基于文件内容的快速哈希），用于客户端缓存验证：
+The server automatically generates ETags for all static files (based on fast content hashing) for client cache validation:
 
-**响应头示例**：
+**Response Header Example**:
 ```
 HTTP/1.1 200 OK
 ETag: "23cc8d56a93cc61c"
 Cache-Control: public, max-age=3600
 ```
 
-### 条件请求（If-None-Match）
+### Conditional Requests (If-None-Match)
 
-客户端可以发送 `If-None-Match` 头来验证缓存：
+Clients can send an `If-None-Match` header to validate cache:
 
-**请求**：
+**Request**:
 ```bash
 curl -H 'If-None-Match: "23cc8d56a93cc61c"' http://localhost:8080/static/test.txt
 ```
 
-**ETag 匹配时**（304 Not Modified）：
+**When ETag Matches** (304 Not Modified):
 ```
 HTTP/1.1 304 Not Modified
 ETag: "23cc8d56a93cc61c"
 Cache-Control: public, max-age=3600
 ```
 
-**ETag 不匹配时**（200 OK）：
+**When ETag Doesn't Match** (200 OK):
 ```
 HTTP/1.1 200 OK
-ETag: "新的ETag值"
+ETag: "new-etag-value"
 Cache-Control: public, max-age=3600
 Content-Length: 23
 ```
 
-### 节省带宽
+### Bandwidth Savings
 
-使用 304 响应可以显著减少带宽消耗：
-- 不传输响应体
-- 仅返回必要的头信息
-- 浏览器使用本地缓存内容
+Using 304 responses significantly reduces bandwidth consumption:
+- No response body transmitted
+- Only necessary headers returned
+- Browser uses locally cached content
 
-## 通过 API 修改路由
+## Modifying Routes via API
 
-### 查看当前路由配置
+### View Current Route Configuration
 
 ```bash
 curl http://localhost:8000/v1/discovery:routes | jq '.resources[0]'
 ```
 
-### 更新路由配置
+### Update Route Configuration
 
-通过 xDS 风格端点更新路由：
+Update routes via xDS-style endpoint:
 
 ```bash
-# POST 路由资源（xDS 格式）
+# POST route resources (xDS format)
 curl -X POST http://localhost:8000/v1/discovery:routes \
   -H "Content-Type: application/json" \
   -d '{"resources": [{
@@ -181,9 +181,9 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
 }]}'
 ```
 
-## 配置示例
+## Configuration Examples
 
-### 多语言网站配置
+### Multi-language Website Configuration
 
 ```toml
 [routes.custom_routes]
@@ -192,7 +192,7 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
 "/ja" = { type = "file", path = "templates/index-ja.html" }
 ```
 
-### 文件下载站点配置
+### File Download Site Configuration
 
 ```toml
 [routes.custom_routes]
@@ -201,7 +201,7 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
 "/videos" = { type = "dir", path = "public/videos" }
 ```
 
-### URL 重定向配置
+### URL Redirect Configuration
 
 ```toml
 [routes.custom_routes]
@@ -209,7 +209,7 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
 "/legacy" = { type = "redirect", target = "/new" }
 ```
 
-### 混合配置
+### Mixed Configuration
 
 ```toml
 [routes.custom_routes]
@@ -219,18 +219,18 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
 "/old-docs" = { type = "redirect", target = "/docs" }
 ```
 
-## 注意事项
+## Notes
 
-1. **路径必须以 `/` 开头**
-2. **file/redirect 是精确匹配**，dir 是前缀匹配
-3. **path 字段相对于服务器工作目录**
-4. **修改路由配置立即生效**，无需重启
-5. **安全性**：目录路由会进行目录遍历检查，防止访问上级目录
-6. **更新配置时需要提供完整的配置对象**，部分更新暂不支持
+1. **Paths must start with `/`**
+2. **file/redirect use exact matching**, dir uses prefix matching
+3. **path field is relative to server working directory**
+4. **Route configuration changes take effect immediately**, no restart required
+5. **Security**: Directory routes perform path traversal checks to prevent accessing parent directories
+6. **Full configuration object required when updating**, partial updates not yet supported
 
-## API 响应格式
+## API Response Format
 
-### 成功响应
+### Success Response
 
 ```json
 {
@@ -239,7 +239,7 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
 }
 ```
 
-### 错误响应
+### Error Response
 
 ```json
 {
@@ -247,8 +247,8 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
 }
 ```
 
-## 性能考虑
+## Performance Considerations
 
-- 路由配置使用 `HashMap` 存储，查找时间复杂度 O(1)
-- 配置更新使用读写锁 `RwLock`，读操作可并发
-- 静态文件使用异步 I/O，不阻塞服务器
+- Route configuration uses `HashMap` storage, O(1) lookup time complexity
+- Configuration updates use read-write lock `RwLock`, concurrent read operations allowed
+- Static files use async I/O, non-blocking server

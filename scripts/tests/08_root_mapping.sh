@@ -1,10 +1,10 @@
 #!/bin/bash
-# 根路径映射测试
-# 此脚本由 integration_tests.sh 调用，common.sh 已加载
+# Root Path Mapping Tests
+# This script is called by integration_tests.sh, common.sh is already loaded
 
-log_section "8. 根路径映射"
+log_section "8. Root Path Mapping"
 
-# 配置根路径映射
+# Configure root path mapping
 curl -s -X POST "$API_URL/v1/discovery:routes" \
     -H "Content-Type: application/json" \
     -d '{
@@ -18,11 +18,11 @@ curl -s -X POST "$API_URL/v1/discovery:routes" \
 }' > /dev/null
 
 sleep 0.5
-log_info "根路径映射已配置 (/ -> static/)"
+log_info "Root path mapping configured (/ -> static/)"
 
-# 测试根路径映射
+# Test root path mapping
 RESPONSE=$(curl -s "$BASE_URL/test.txt")
-assert_contains "根路径文件 (/test.txt -> static/test.txt)" "$RESPONSE" "Hello"
+assert_contains "Root path file (/test.txt -> static/test.txt)" "$RESPONSE" "Hello"
 
 CONTENT_TYPE=$(curl -sI "$BASE_URL/style.css" | grep -i "content-type" | tr -d '\r')
-assert_contains "根路径 MIME 类型 (/style.css)" "$CONTENT_TYPE" "text/css"
+assert_contains "Root path MIME type (/style.css)" "$CONTENT_TYPE" "text/css"

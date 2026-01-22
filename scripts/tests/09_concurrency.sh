@@ -1,8 +1,8 @@
 #!/bin/bash
-# 并发测试
-# 此脚本由 integration_tests.sh 调用，common.sh 已加载
+# Concurrency Tests
+# This script is called by integration_tests.sh, common.sh is already loaded
 
-log_section "9. 并发测试"
+log_section "9. Concurrency Tests"
 
 START=$(date +%s%N)
 pids=""
@@ -15,10 +15,10 @@ for pid in $pids; do
 done
 END=$(date +%s%N)
 ELAPSED=$(( (END - START) / 1000000 ))
-log_pass "20 个并发请求完成: ${ELAPSED}ms"
+log_pass "20 concurrent requests completed: ${ELAPSED}ms"
 
-# 可选: ab 性能测试
+# Optional: ab performance test
 if command -v ab &> /dev/null; then
-    log_info "ApacheBench 性能测试:"
-    ab -n 500 -c 10 -q "$BASE_URL/test.txt" 2>&1 | grep "Requests per second" || echo "  (跳过)"
+    log_info "ApacheBench performance test:"
+    ab -n 500 -c 10 -q "$BASE_URL/test.txt" 2>&1 | grep "Requests per second" || echo "  (skipped)"
 fi

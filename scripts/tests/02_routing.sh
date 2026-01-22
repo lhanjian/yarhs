@@ -1,13 +1,13 @@
 #!/bin/bash
-# 路由功能测试
-# 此脚本由 integration_tests.sh 调用，common.sh 已加载
+# Routing Tests
+# This script is called by integration_tests.sh, common.sh is already loaded
 
-log_section "2. 路由功能"
+log_section "2. Routing"
 
-assert_status "主页路由 (/)" "$BASE_URL/" "200"
-assert_status "File 路由 (/about)" "$BASE_URL/about" "200"
-assert_status "Dir 路由 (/static/test.txt)" "$BASE_URL/static/test.txt" "200"
+assert_status "Homepage route (/)" "$BASE_URL/" "200"
+assert_status "File route (/about)" "$BASE_URL/about" "200"
+assert_status "Dir route (/static/test.txt)" "$BASE_URL/static/test.txt" "200"
 
 # Favicon
 CONTENT_TYPE=$(curl -sI "$BASE_URL/favicon.svg" | grep -i "content-type" | tr -d '\r')
-assert_contains "Favicon 响应" "$CONTENT_TYPE" "svg"
+assert_contains "Favicon response" "$CONTENT_TYPE" "svg"

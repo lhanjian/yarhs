@@ -1,23 +1,23 @@
 #!/bin/bash
-# YARHS 测试共享模块
-# 提供颜色、日志、断言等通用函数
+# YARHS Test Shared Module
+# Provides colors, logging, assertions and other common functions
 
-# 颜色定义
+# Color definitions
 export GREEN='\033[0;32m'
 export BLUE='\033[0;34m'
 export RED='\033[0;31m'
 export YELLOW='\033[0;33m'
 export NC='\033[0m'
 
-# 测试计数 (导出为环境变量以便子脚本累加)
+# Test counters (exported as environment variables for sub-scripts to accumulate)
 export PASS=${PASS:-0}
 export FAIL=${FAIL:-0}
 
-# URL 配置
+# URL configuration
 export BASE_URL="http://127.0.0.1:8080"
 export API_URL="http://127.0.0.1:8000"
 
-# 日志函数
+# Log functions
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_pass() { echo -e "${GREEN}[PASS]${NC} $1"; PASS=$((PASS + 1)); }
 log_fail() { echo -e "${RED}[FAIL]${NC} $1"; FAIL=$((FAIL + 1)); }
@@ -27,7 +27,7 @@ log_section() {
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-# 断言函数: 检查字符串包含
+# Assertion function: check string contains
 assert_contains() {
     local name="$1" content="$2" expected="$3"
     if echo "$content" | grep -q "$expected"; then
@@ -37,7 +37,7 @@ assert_contains() {
     fi
 }
 
-# 断言函数: 检查 HTTP 状态码
+# Assertion function: check HTTP status code
 assert_status() {
     local name="$1" url="$2" expected="$3" extra="${4:-}"
     local status
@@ -57,5 +57,5 @@ assert_status() {
     fi
 }
 
-# 导出函数供子脚本使用
+# Export functions for sub-scripts to use
 export -f log_info log_pass log_fail log_section assert_contains assert_status

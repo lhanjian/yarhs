@@ -8,7 +8,9 @@
     "-W",
     "clippy::pedantic",
     "-W",
-    "clippy::nursery"
+    "clippy::nursery",
+    "-A",
+    "clippy::option_if_let_else"
   ],
   "[rust]": {
     "editor.defaultFormatter": "rust-lang.rust-analyzer",

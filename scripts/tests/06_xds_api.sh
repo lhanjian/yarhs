@@ -1,19 +1,19 @@
 #!/bin/bash
-# xDS API 测试
-# 此脚本由 integration_tests.sh 调用，common.sh 已加载
+# xDS API Tests
+# This script is called by integration_tests.sh, common.sh is already loaded
 
 log_section "6. xDS API"
 
-# 快照端点
+# Snapshot endpoint
 RESPONSE=$(curl -s "$API_URL/v1/discovery")
-assert_contains "discovery 快照端点" "$RESPONSE" "version_info"
+assert_contains "discovery snapshot endpoint" "$RESPONSE" "version_info"
 
-# 各资源端点
+# Resource endpoints
 RESPONSE=$(curl -s "$API_URL/v1/discovery:routes")
-assert_contains "routes 资源端点" "$RESPONSE" "resources"
+assert_contains "routes resource endpoint" "$RESPONSE" "resources"
 
 RESPONSE=$(curl -s "$API_URL/v1/discovery:logging")
-assert_contains "logging 资源端点" "$RESPONSE" "level"
+assert_contains "logging resource endpoint" "$RESPONSE" "level"
 
 RESPONSE=$(curl -s "$API_URL/v1/discovery:listeners")
-assert_contains "listeners 资源端点" "$RESPONSE" "main_server"
+assert_contains "listeners resource endpoint" "$RESPONSE" "main_server"

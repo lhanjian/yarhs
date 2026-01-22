@@ -1,9 +1,9 @@
 #!/bin/bash
-# YARHS 统一测试脚本
-# 入口脚本：运行 cargo test + 集成测试
+# YARHS Unified Test Script
+# Entry script: runs cargo test + integration tests
 set -e
 
-# 颜色定义
+# Color definitions
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
@@ -15,68 +15,68 @@ log_pass() { echo -e "${GREEN}[PASS]${NC} $1"; }
 log_fail() { echo -e "${RED}[FAIL]${NC} $1"; }
 log_section() { echo -e "\n${YELLOW}════════════════════════════════════════${NC}"; echo -e "${YELLOW}  $1${NC}"; echo -e "${YELLOW}════════════════════════════════════════${NC}"; }
 
-# 切换到项目根目录
+# Change to project root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
 echo ""
 echo "╔════════════════════════════════════════╗"
-echo "║       YARHS 统一测试套件               ║"
+echo "║       YARHS Unified Test Suite            ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 
 ERRORS=0
 
 # ============================================
-# 阶段 1: 单元测试
+# Phase 1: Unit Tests
 # ============================================
-log_section "阶段 1/3: 单元测试 (cargo test)"
+log_section "Phase 1/3: Unit Tests (cargo test)"
 
 if cargo test --all 2>&1; then
-    log_pass "单元测试通过"
+    log_pass "Unit tests passed"
 else
-    log_fail "单元测试失败"
+    log_fail "Unit tests failed"
     ERRORS=$((ERRORS + 1))
 fi
 
 # ============================================
-# 阶段 2: 构建 Release 版本
+# Phase 2: Build Release Version
 # ============================================
-log_section "阶段 2/3: 构建 Release 版本"
+log_section "Phase 2/3: Build Release Version"
 
 if cargo build --release 2>&1; then
-    log_pass "Release 构建成功"
+    log_pass "Release build successful"
 else
-    log_fail "Release 构建失败"
+    log_fail "Release build failed"
     exit 1
 fi
 
 # ============================================
-# 阶段 3: 集成测试
+# Phase 3: Integration Tests
 # ============================================
-log_section "阶段 3/3: 集成测试"
+log_section "Phase 3/3: Integration Tests"
 
 chmod +x "$SCRIPT_DIR/integration_tests.sh"
 if "$SCRIPT_DIR/integration_tests.sh"; then
-    log_pass "集成测试通过"
+    log_pass "Integration tests passed"
 else
-    log_fail "集成测试失败"
+    log_fail "Integration tests failed"
     ERRORS=$((ERRORS + 1))
 fi
 
 # ============================================
-# 结果汇总
+# Results Summary
 # ============================================
 echo ""
 echo "╔════════════════════════════════════════╗"
-echo "║           最终结果                     ║"
+echo "║           Final Results                 ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 
 if [ "$ERRORS" -eq 0 ]; then
-    echo -e "${GREEN}✅ 所有测试通过！${NC}"
+    echo -e "${GREEN}✅ All tests passed!${NC}"
     exit 0
 else
-    echo -e "${RED}❌ $ERRORS 个阶段失败${NC}"
+    echo -e "${RED}❌ $ERRORS phase(s) failed${NC}"
     exit 1
 fi

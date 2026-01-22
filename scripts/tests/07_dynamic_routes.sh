@@ -1,10 +1,10 @@
 #!/bin/bash
-# 动态路由配置测试
-# 此脚本由 integration_tests.sh 调用，common.sh 已加载
+# Dynamic Route Configuration Tests
+# This script is called by integration_tests.sh, common.sh is already loaded
 
-log_section "7. 动态路由配置"
+log_section "7. Dynamic Route Configuration"
 
-# 创建测试文件
+# Create test files
 mkdir -p templates static
 cat > templates/contact.html << 'EOF'
 <!DOCTYPE html>
@@ -12,9 +12,9 @@ cat > templates/contact.html << 'EOF'
 <body><h1>Contact Us</h1></body></html>
 EOF
 echo '{"name": "test", "version": "1.0"}' > static/api.json
-log_info "测试文件已创建"
+log_info "Test files created"
 
-# 获取当前配置并添加路由
+# Get current config and add routes
 curl -s "$API_URL/v1/discovery:routes" > /tmp/config.json
 
 jq '{
@@ -34,19 +34,19 @@ RESPONSE=$(curl -s -X POST "$API_URL/v1/discovery:routes" \
     -d @/tmp/xds_routes.json)
 
 if echo "$RESPONSE" | grep -q '"status".*"ACK"'; then
-    log_pass "动态添加路由 (ACK)"
+    log_pass "Dynamic route addition (ACK)"
 else
-    log_fail "动态添加路由失败: $RESPONSE"
+    log_fail "Dynamic route addition failed: $RESPONSE"
 fi
 
-sleep 0.3  # 等待配置生效
+sleep 0.3  # Wait for config to take effect
 
-# 测试新添加的路由
+# Test newly added routes
 RESPONSE=$(curl -s "$BASE_URL/contact")
-assert_contains "动态 File 路由 (/contact)" "$RESPONSE" "Contact Us"
+assert_contains "Dynamic File route (/contact)" "$RESPONSE" "Contact Us"
 
 RESPONSE=$(curl -s "$BASE_URL/api-spec")
-assert_contains "动态 JSON 路由 (/api-spec)" "$RESPONSE" '"version"'
+assert_contains "Dynamic JSON route (/api-spec)" "$RESPONSE" '"version"'
 
 LOCATION=$(curl -sI "$BASE_URL/docs" | grep -i "location:" | tr -d '\r')
-assert_contains "动态 Redirect 路由 (/docs)" "$LOCATION" "/about"
+assert_contains "Dynamic Redirect route (/docs)" "$LOCATION" "/about"

@@ -1,9 +1,9 @@
 [server]
 host = "127.0.0.1"
 port = 8080
-api_host = "0.0.0.0"  # API服务器监听地址
-api_port = 8000       # API管理端口（独立于主服务端口）
-workers = 4           # Tokio 运行时工作线程数（默认为 CPU 核心数）
+api_host = "0.0.0.0"  # API server listen address
+api_port = 8000       # API management port (independent from main server port)
+workers = 4           # Tokio runtime worker threads (default: CPU core count)
 
 [logging]
 level = "debug"
@@ -20,18 +20,18 @@ max_connections = 5000
 server_name = "Tokio-Hyper/1.0"
 default_content_type = "text/html; charset=utf-8"
 enable_cors = false
-max_body_size = 10485760  # 10MB (HTTP 请求体大小限制)
+max_body_size = 10485760  # 10MB (HTTP request body size limit)
 
 [routes]
 favicon_paths = ["/favicon.ico", "/favicon.svg"]
-index_files = ["index.html", "index.htm"]  # 默认文档
+index_files = ["index.html", "index.htm"]  # Default documents
 
-# 静态目录映射（统一配置）
+# Static directory mapping (unified configuration)
 [routes.custom_routes]
 "/static" = { type = "dir", path = "static" }
 "/about" = { type = "file", path = "templates/about.html" }
 "/home" = { type = "file", path = "templates/index.html" }
 
-# 更多路由示例（可选）
+# More route examples (optional)
 # "/old-path" = { type = "redirect", target = "/new-path" }
 # "/uploads" = { type = "static", dir = "user_uploads" }
