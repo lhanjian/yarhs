@@ -132,6 +132,12 @@ pub struct LoggingConfig {
     /// Access log format (combined, common, json, or custom pattern)
     #[serde(default = "default_access_log_format")]
     pub access_log_format: String,
+    /// Access log file path (optional, stdout if not set)
+    #[serde(default)]
+    pub access_log_file: Option<String>,
+    /// Error log file path (optional, stderr if not set)
+    #[serde(default)]
+    pub error_log_file: Option<String>,
 }
 
 #[allow(clippy::missing_const_for_fn)]

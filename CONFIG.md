@@ -33,6 +33,8 @@ SERVER_HTTP__ENABLE_CORS=true cargo run
   - `common` - Common Log Format (CLF)
   - `json` - JSON structured logging
   - Custom pattern with variables
+- `logging.access_log_file` - Access log file path (optional, stdout if not set)
+- `logging.error_log_file` - Error log file path (optional, stderr if not set)
 
 ### Performance Configuration
 - `performance.keep_alive_timeout` - Keep-alive timeout in seconds (default: 75)
@@ -93,7 +95,10 @@ api_port = 8000
 
 [logging]
 level = "info"
-access_log = false
+access_log = true
+access_log_format = "combined"
+access_log_file = "/var/log/yarhs/access.log"
+error_log_file = "/var/log/yarhs/error.log"
 
 [performance]
 max_connections = 10000

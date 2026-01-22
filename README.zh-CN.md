@@ -102,7 +102,33 @@ curl -X POST http://localhost:8000/v1/discovery:logging \
 # $http_user_agent, $request_time
 ```
 
-### 7. 高性能
+### 7. 日志文件输出
+- ✅ **文件日志** - 将访问日志和错误日志写入文件
+- ✅ **运行时配置** - 通过 API 动态修改日志文件路径
+- ✅ **自动创建目录** - 自动创建父目录
+- ✅ **线程安全** - 多个处理器并发写入安全
+
+```bash
+# 通过 API 配置日志文件
+curl -X POST http://localhost:8000/v1/discovery:logging \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resources": [{
+      "level": "info",
+      "access_log": true,
+      "access_log_format": "combined",
+      "access_log_file": "/var/log/yarhs/access.log",
+      "error_log_file": "/var/log/yarhs/error.log"
+    }]
+  }'
+
+# 或在 config.toml 中配置
+# [logging]
+# access_log_file = "/var/log/yarhs/access.log"
+# error_log_file = "/var/log/yarhs/error.log"
+```
+
+### 8. 高性能
 - **40k+ QPS** (静态文件)
 - **63k+ QPS** (API 接口)
 - 全异步 I/O，基于 Tokio + Hyper

@@ -132,6 +132,21 @@ pub async fn update_logging(
     let logging: LoggingConfig = serde_json::from_value(resource.clone())
         .map_err(|e| format!("Invalid logging resource: {e}"))?;
 
+    // Update log file paths if changed
+    if crate::logger::writer::is_initialized() {
+        let writer = crate::logger::writer::get();
+        
+        // Update access log file
+        if let Err(e) = writer.set_access_log_file(logging.access_log_file.as_deref()) {
+            return Err(format!("Failed to update access log file: {e}"));
+        }
+        
+        // Update error log file
+        if let Err(e) = writer.set_error_log_file(logging.error_log_file.as_deref()) {
+            return Err(format!("Failed to update error log file: {e}"));
+        }
+    }
+
     {
         let mut config = state.dynamic_config.write().await;
         config.logging = logging.clone();

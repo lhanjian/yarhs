@@ -4,78 +4,123 @@
 //! - Server lifecycle logging
 //! - Access logging with multiple formats
 //! - Error and warning logging
+//! - File-based logging support
 
 mod format;
+pub mod writer;
 
 pub use format::AccessLogEntry;
 
 use crate::config::Config;
 use std::net::SocketAddr;
 
-pub fn log_server_start(addr: &SocketAddr, config: &Config) {
-    println!("======================================");
-    println!("Async server started successfully");
-    println!("Listening on: http://{addr}");
-    println!("Log level: {}", config.logging.level);
-    if let Some(workers) = config.server.workers {
-        println!("Worker threads: {workers}");
+/// Initialize the logger with configuration
+///
+/// Should be called once at application startup.
+pub fn init(config: &Config) -> std::io::Result<()> {
+    writer::init(
+        config.logging.access_log_file.as_deref(),
+        config.logging.error_log_file.as_deref(),
+    )
+}
+
+/// Write to info/access log
+fn write_info(message: &str) {
+    if writer::is_initialized() {
+        writer::get().write_info(message);
+    } else {
+        println!("{message}");
     }
-    println!("Using Tokio runtime for concurrency");
-    println!("======================================\n");
+}
+
+/// Write to error log
+fn write_error(message: &str) {
+    if writer::is_initialized() {
+        writer::get().write_error(message);
+    } else {
+        eprintln!("{message}");
+    }
+}
+
+/// Write to access log specifically
+fn write_access(message: &str) {
+    if writer::is_initialized() {
+        writer::get().write_access(message);
+    } else {
+        println!("{message}");
+    }
+}
+
+pub fn log_server_start(addr: &SocketAddr, config: &Config) {
+    write_info("======================================");
+    write_info("Async server started successfully");
+    write_info(&format!("Listening on: http://{addr}"));
+    write_info(&format!("Log level: {}", config.logging.level));
+    if let Some(workers) = config.server.workers {
+        write_info(&format!("Worker threads: {workers}"));
+    }
+    if let Some(ref path) = config.logging.access_log_file {
+        write_info(&format!("Access log: {path}"));
+    }
+    if let Some(ref path) = config.logging.error_log_file {
+        write_info(&format!("Error log: {path}"));
+    }
+    write_info("Using Tokio runtime for concurrency");
+    write_info("======================================\n");
 }
 
 pub fn log_connection_accepted(peer_addr: &SocketAddr) {
-    println!("[Connection] Accepted from: {peer_addr}");
+    write_info(&format!("[Connection] Accepted from: {peer_addr}"));
 }
 
 pub fn log_connection_error(err: &impl std::fmt::Debug) {
-    eprintln!("[ERROR] Failed to serve connection: {err:?}");
+    write_error(&format!("[ERROR] Failed to serve connection: {err:?}"));
 }
 
 pub fn log_error(message: &str) {
-    eprintln!("[ERROR] {message}");
+    write_error(&format!("[ERROR] {message}"));
 }
 
 pub fn log_api_error(message: &str) {
-    eprintln!("[API ERROR] {message}");
+    write_error(&format!("[API ERROR] {message}"));
 }
 
 pub fn log_old_listener_error(message: &str) {
-    eprintln!("[OLD] {message}");
+    write_error(&format!("[OLD] {message}"));
 }
 
 pub fn log_warning(message: &str) {
-    eprintln!("[WARN] {message}");
+    write_error(&format!("[WARN] {message}"));
 }
 
 pub fn log_headers_count(count: usize, show: bool) {
     if show {
-        println!("[Headers] Count: {count}");
+        write_info(&format!("[Headers] Count: {count}"));
     }
 }
 
 /// Log formatted access log entry
 pub fn log_access(entry: &AccessLogEntry, format: &str) {
-    println!("{}", entry.format(format));
+    write_access(&entry.format(format));
 }
 
 pub fn log_api_request(method: &str, path: &str, status: u16) {
-    println!("[API] {method} {path} - {status}");
+    write_info(&format!("[API] {method} {path} - {status}"));
 }
 
 pub fn log_restart_triggered() {
-    println!("\n[Restart] Server restart triggered");
+    write_info("\n[Restart] Server restart triggered");
 }
 
 pub fn log_binding_new_address(addr: &std::net::SocketAddr) {
-    println!("[Step 1] Binding new address: {addr}");
+    write_info(&format!("[Step 1] Binding new address: {addr}"));
 }
 
 pub fn log_new_listener_bound(addr: &std::net::SocketAddr) {
-    println!("[Step 1] ✓ New listener bound successfully on {addr}");
+    write_info(&format!("[Step 1] ✓ New listener bound successfully on {addr}"));
 }
 
 pub fn log_bind_failed(addr: &std::net::SocketAddr, err: &std::io::Error) {
     log_error(&format!("[Step 1] ✗ Failed to bind {addr}: {err}"));
-    eprintln!("         Continuing with current configuration");
+    write_error("         Continuing with current configuration");
 }

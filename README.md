@@ -102,7 +102,33 @@ curl -X POST http://localhost:8000/v1/discovery:logging \
 # $http_user_agent, $request_time
 ```
 
-### 7. High Performance
+### 7. Log File Output
+- ✅ **File-based Logging** - Write access and error logs to files
+- ✅ **Runtime Configuration** - Change log file paths via API
+- ✅ **Auto Directory Creation** - Creates parent directories automatically
+- ✅ **Thread-safe** - Safe concurrent writes from multiple handlers
+
+```bash
+# Configure log files via API
+curl -X POST http://localhost:8000/v1/discovery:logging \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resources": [{
+      "level": "info",
+      "access_log": true,
+      "access_log_format": "combined",
+      "access_log_file": "/var/log/yarhs/access.log",
+      "error_log_file": "/var/log/yarhs/error.log"
+    }]
+  }'
+
+# Or configure in config.toml
+# [logging]
+# access_log_file = "/var/log/yarhs/access.log"
+# error_log_file = "/var/log/yarhs/error.log"
+```
+
+### 8. High Performance
 - **40k+ QPS** (static files)
 - **63k+ QPS** (API endpoints)
 - Fully async I/O, built on Tokio + Hyper

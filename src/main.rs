@@ -52,6 +52,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config_path = parse_args().unwrap_or_else(|| "config".to_string());
     let cfg = config::Config::load_from(&config_path)?;
 
+    // Initialize logger with file configuration
+    if let Err(e) = logger::init(&cfg) {
+        eprintln!("[ERROR] Failed to initialize logger: {e}");
+        return Err(e.into());
+    }
+
     // Create Tokio runtime, set thread count based on workers configuration
     let mut runtime_builder = tokio::runtime::Builder::new_multi_thread();
     runtime_builder.enable_all();
