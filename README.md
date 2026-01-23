@@ -2,7 +2,7 @@
 
 [中文文档](README.zh-CN.md)
 
-A production-ready, high-performance async HTTP server in Rust with **dynamic routing**, **xDS-style API**, zero-downtime hot restart, and enterprise-grade features.
+A high-performance async HTTP server in Rust with **dynamic routing**, **xDS-style API**, zero-downtime hot restart, and enterprise-grade features.
 
 ## ✨ Key Features
 
@@ -395,7 +395,7 @@ Benchmark results (wrk 4 threads, 100 connections, 30 seconds):
 
 ## 🛡️ Code Quality
 
-- ✅ **Zero Compiler Warnings** - Production-ready code
+- ✅ **Zero Compiler Warnings** - Clean, well-maintained code
 - ✅ **No Race Conditions** - Thread safety via atomic operations
 - ✅ **Comprehensive Error Handling** - All I/O operations handle errors
 - ✅ **Type Safety** - Full utilization of Rust's type system
@@ -456,6 +456,6 @@ MIT License
 
 ---
 
-**Status**: ✅ Production Ready | 🚀 Actively Maintained
+**Status**: ✅ Feature Complete | 🚀 Actively Maintained
 
 **Last Updated**: 2026-01-22

@@ -254,7 +254,14 @@ async fn route_with_vhosts(
 
     // 3. Find matching route within virtual host
     if let Some(route) = routing::match_route(ctx.path, None, &vhost.routes) {
-        return dispatch_route_action(ctx, &route.action, ctx.path, index_files).await;
+        // Get the route prefix for path stripping (if prefix match)
+        let route_prefix = route
+            .match_rule
+            .prefix
+            .as_deref()
+            .or(route.match_rule.path.as_deref())
+            .unwrap_or("");
+        return dispatch_route_action(ctx, &route.action, route_prefix, index_files).await;
     }
 
     // 4. No route matched, return 404
