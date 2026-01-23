@@ -25,13 +25,17 @@ pub async fn handle_snapshot(state: Arc<AppState>) -> Result<Response<Full<Bytes
     let (http_ver, http_nonce) = state.xds_versions.get_version(ResourceType::Http);
     let (logging_ver, logging_nonce) = state.xds_versions.get_version(ResourceType::Logging);
     let (perf_ver, perf_nonce) = state.xds_versions.get_version(ResourceType::Performance);
+    let (vhost_ver, vhost_nonce) = state.xds_versions.get_version(ResourceType::VirtualHost);
 
     let snapshot = SnapshotResponse {
         version_info: format!(
             "{}",
             std::cmp::max(
-                std::cmp::max(listener_ver, route_ver),
-                std::cmp::max(std::cmp::max(http_ver, logging_ver), perf_ver)
+                std::cmp::max(
+                    std::cmp::max(listener_ver, route_ver),
+                    std::cmp::max(std::cmp::max(http_ver, logging_ver), perf_ver)
+                ),
+                vhost_ver
             )
         ),
         resources: ResourceSnapshot {
@@ -74,6 +78,11 @@ pub async fn handle_snapshot(state: Arc<AppState>) -> Result<Response<Full<Bytes
                 nonce: perf_nonce.to_string(),
                 value: dynamic_config.performance.clone(),
             },
+            virtual_hosts: VersionedValue {
+                version_info: vhost_ver.to_string(),
+                nonce: vhost_nonce.to_string(),
+                value: (*dynamic_config.virtual_hosts).clone(),
+            },
         },
     };
 
@@ -86,7 +95,6 @@ pub async fn handle_discovery_get(
     state: Arc<AppState>,
     resource_type: ResourceType,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
-    let dynamic_config = state.dynamic_config.read().await;
     let (version, nonce) = state.xds_versions.get_version(resource_type);
 
     let type_url = format!("type.yarhs.io/{resource_type}");
@@ -95,63 +103,76 @@ pub async fn handle_discovery_get(
         resource_type.to_string().to_lowercase() + "s"
     );
 
-    let resources = match resource_type {
-        ResourceType::Listener => {
-            vec![Resource {
-                type_url: type_url.clone(),
-                name: "main".to_string(),
-                value: serde_json::json!({
-                    "main_server": {
-                        "host": dynamic_config.server.host,
-                        "port": dynamic_config.server.port
-                    },
-                    "api_server": {
-                        "host": dynamic_config.server.api_host,
-                        "port": dynamic_config.server.api_port
-                    }
-                }),
-            }]
-        }
-        ResourceType::Route => {
-            vec![Resource {
-                type_url: type_url.clone(),
-                name: "default".to_string(),
-                value: serde_json::json!({
-                    "favicon_paths": &dynamic_config.routes.favicon_paths,
-                    "index_files": &dynamic_config.routes.index_files,
-                    "custom_routes": &dynamic_config.routes.custom_routes
-                }),
-            }]
-        }
-        ResourceType::Http => {
-            vec![Resource {
-                type_url: type_url.clone(),
-                name: "default".to_string(),
-                value: serde_json::to_value(&*dynamic_config.http).unwrap_or_else(|e| {
-                    logger::log_error(&format!("Failed to serialize HTTP config: {e}"));
-                    serde_json::json!({"error": "serialization_failed"})
-                }),
-            }]
-        }
-        ResourceType::Logging => {
-            vec![Resource {
-                type_url: type_url.clone(),
-                name: "default".to_string(),
-                value: serde_json::to_value(&dynamic_config.logging).unwrap_or_else(|e| {
-                    logger::log_error(&format!("Failed to serialize logging config: {e}"));
-                    serde_json::json!({"error": "serialization_failed"})
-                }),
-            }]
-        }
-        ResourceType::Performance => {
-            vec![Resource {
-                type_url: type_url.clone(),
-                name: "default".to_string(),
-                value: serde_json::to_value(&dynamic_config.performance).unwrap_or_else(|e| {
-                    logger::log_error(&format!("Failed to serialize performance config: {e}"));
-                    serde_json::json!({"error": "serialization_failed"})
-                }),
-            }]
+    // Build resources within a scope to release read lock early
+    let resources = {
+        let dynamic_config = state.dynamic_config.read().await;
+        match resource_type {
+            ResourceType::Listener => {
+                vec![Resource {
+                    type_url: type_url.clone(),
+                    name: "main".to_string(),
+                    value: serde_json::json!({
+                        "main_server": {
+                            "host": dynamic_config.server.host,
+                            "port": dynamic_config.server.port
+                        },
+                        "api_server": {
+                            "host": dynamic_config.server.api_host,
+                            "port": dynamic_config.server.api_port
+                        }
+                    }),
+                }]
+            }
+            ResourceType::Route => {
+                vec![Resource {
+                    type_url: type_url.clone(),
+                    name: "default".to_string(),
+                    value: serde_json::json!({
+                        "favicon_paths": &dynamic_config.routes.favicon_paths,
+                        "index_files": &dynamic_config.routes.index_files,
+                        "custom_routes": &dynamic_config.routes.custom_routes
+                    }),
+                }]
+            }
+            ResourceType::Http => {
+                vec![Resource {
+                    type_url: type_url.clone(),
+                    name: "default".to_string(),
+                    value: serde_json::to_value(&*dynamic_config.http).unwrap_or_else(|e| {
+                        logger::log_error(&format!("Failed to serialize HTTP config: {e}"));
+                        serde_json::json!({"error": "serialization_failed"})
+                    }),
+                }]
+            }
+            ResourceType::Logging => {
+                vec![Resource {
+                    type_url: type_url.clone(),
+                    name: "default".to_string(),
+                    value: serde_json::to_value(&dynamic_config.logging).unwrap_or_else(|e| {
+                        logger::log_error(&format!("Failed to serialize logging config: {e}"));
+                        serde_json::json!({"error": "serialization_failed"})
+                    }),
+                }]
+            }
+            ResourceType::Performance => {
+                vec![Resource {
+                    type_url: type_url.clone(),
+                    name: "default".to_string(),
+                    value: serde_json::to_value(&dynamic_config.performance).unwrap_or_else(|e| {
+                        logger::log_error(&format!("Failed to serialize performance config: {e}"));
+                        serde_json::json!({"error": "serialization_failed"})
+                    }),
+                }]
+            }
+            ResourceType::VirtualHost => {
+                vec![Resource {
+                    type_url: type_url.clone(),
+                    name: "default".to_string(),
+                    value: serde_json::json!({
+                        "virtual_hosts": &*dynamic_config.virtual_hosts
+                    }),
+                }]
+            }
         }
     };
 
@@ -237,6 +258,9 @@ pub async fn handle_discovery_post(
         ResourceType::Logging => updaters::update_logging(&state, &update_req.resources[0]).await,
         ResourceType::Performance => {
             updaters::update_performance(&state, &update_req.resources[0]).await
+        }
+        ResourceType::VirtualHost => {
+            updaters::update_virtual_hosts(&state, &update_req.resources[0]).await
         }
     };
 

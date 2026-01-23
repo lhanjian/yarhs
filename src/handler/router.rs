@@ -2,11 +2,11 @@
 //!
 //! Entry point for HTTP request processing, responsible for method validation, route matching, and dispatching.
 
-use crate::config::{AppState, RouteHandler, RoutesConfig};
+use crate::config::{AppState, RouteAction, RouteHandler, RoutesConfig, VirtualHost};
 use crate::handler::static_files;
 use crate::http;
 use crate::logger;
-use crate::logger::AccessLogEntry;
+use crate::routing;
 use http_body_util::Full;
 use hyper::body::{Body, Bytes};
 use hyper::{Method, Request, Response};
@@ -57,6 +57,14 @@ pub async fn handle_request(
         .get("user-agent")
         .and_then(|v| v.to_str().ok())
         .map(ToString::to_string);
+    
+    // Extract Host header for virtual host routing
+    let host = req
+        .headers()
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost")
+        .to_string();
 
     let access_log = state
         .cached_access_log
@@ -71,9 +79,9 @@ pub async fn handle_request(
     // 1. Check HTTP method
     if let Some(resp) = check_http_method(&method, state.config.http.enable_cors) {
         if access_log {
-            log_access_entry(
+            logger::log_access_request(
                 &remote_addr,
-                &method,
+                method.as_str(),
                 &path,
                 query.as_deref(),
                 &http_version,
@@ -91,9 +99,9 @@ pub async fn handle_request(
     // 2. Check body size
     if let Some(resp) = check_body_size(&req, state.config.http.max_body_size) {
         if access_log {
-            log_access_entry(
+            logger::log_access_request(
                 &remote_addr,
-                &method,
+                method.as_str(),
                 &path,
                 query.as_deref(),
                 &http_version,
@@ -133,13 +141,19 @@ pub async fn handle_request(
             .map(ToString::to_string),
     };
 
-    // 5. Get routes config and dispatch
-    let routes = {
+    // 5. Get config and dispatch based on virtual hosts or legacy routes
+    let (virtual_hosts, routes) = {
         let config = state.dynamic_config.read().await;
-        Arc::clone(&config.routes)
+        (Arc::clone(&config.virtual_hosts), Arc::clone(&config.routes))
     };
 
-    let response = route_request(&ctx, &routes, &state).await;
+    let response = if virtual_hosts.is_empty() {
+        // Fallback to legacy route configuration
+        route_request(&ctx, &routes, &state).await
+    } else {
+        // Use xDS-style virtual host routing
+        route_with_vhosts(&ctx, &host, &virtual_hosts, &routes, &state).await
+    };
 
     // Log access after response is built
     if access_log {
@@ -149,9 +163,9 @@ pub async fn handle_request(
             .size_hint()
             .exact()
             .unwrap_or(0) as usize;
-        log_access_entry(
+        logger::log_access_request(
             &remote_addr,
-            &method,
+            method.as_str(),
             &path,
             query.as_deref(),
             &http_version,
@@ -208,7 +222,46 @@ fn check_body_size(
     )
 }
 
-/// Route request based on path and configuration
+/// Route request using xDS-style virtual hosts
+async fn route_with_vhosts(
+    ctx: &RequestContext<'_>,
+    host: &str,
+    virtual_hosts: &[VirtualHost],
+    legacy_routes: &Arc<RoutesConfig>,
+    state: &Arc<AppState>,
+) -> Response<Full<Bytes>> {
+    // 0. Health check endpoints (global, highest priority)
+    if legacy_routes.health.enabled {
+        if ctx.path == legacy_routes.health.liveness_path {
+            return http::build_health_response("ok");
+        }
+        if ctx.path == legacy_routes.health.readiness_path {
+            return http::build_health_response("ok");
+        }
+    }
+
+    // 1. Find matching virtual host
+    let Some(vhost) = routing::resolve_virtual_host(host, virtual_hosts) else {
+        // No matching virtual host, fall back to legacy routes
+        return route_request(ctx, legacy_routes, state).await;
+    };
+
+    // 2. Get index files (use vhost override or legacy default)
+    let index_files = vhost
+        .index_files
+        .as_ref()
+        .unwrap_or(&legacy_routes.index_files);
+
+    // 3. Find matching route within virtual host
+    if let Some(route) = routing::match_route(ctx.path, None, &vhost.routes) {
+        return dispatch_route_action(ctx, &route.action, ctx.path, index_files).await;
+    }
+
+    // 4. No route matched, return 404
+    http::build_404_response()
+}
+
+/// Route request based on path and configuration (legacy mode)
 async fn route_request(
     ctx: &RequestContext<'_>,
     routes: &Arc<RoutesConfig>,
@@ -248,7 +301,30 @@ async fn route_request(
     serve_default_homepage(ctx, state).await
 }
 
-/// Dispatch to specific route handler
+/// Dispatch to xDS `RouteAction`
+async fn dispatch_route_action(
+    ctx: &RequestContext<'_>,
+    action: &RouteAction,
+    route_prefix: &str,
+    index_files: &[String],
+) -> Response<Full<Bytes>> {
+    match action {
+        RouteAction::Dir { path: dir } => {
+            static_files::serve_directory(ctx, dir, route_prefix, index_files).await
+        }
+        RouteAction::File { path: file_path } => {
+            static_files::serve_file(ctx, file_path).await
+        }
+        RouteAction::Redirect { target, code } => {
+            http::build_redirect_response_with_code(target, *code)
+        }
+        RouteAction::Direct { status, body, content_type } => {
+            http::build_direct_response(*status, body.as_deref(), content_type.as_deref())
+        }
+    }
+}
+
+/// Dispatch to specific route handler (legacy mode)
 async fn dispatch_route_handler(
     ctx: &RequestContext<'_>,
     handler: &RouteHandler,
@@ -277,35 +353,4 @@ async fn serve_default_homepage(
     let html = static_files::get_default_homepage();
 
     http::response::build_html_response(html, ctx.is_head)
-}
-
-/// Helper function to log access entry
-#[allow(clippy::too_many_arguments)]
-fn log_access_entry(
-    remote_addr: &SocketAddr,
-    method: &Method,
-    path: &str,
-    query: Option<&str>,
-    http_version: &str,
-    status: u16,
-    body_bytes: usize,
-    referer: Option<&str>,
-    user_agent: Option<&str>,
-    request_time_us: u64,
-    format: &str,
-) {
-    let mut entry = AccessLogEntry::new(
-        remote_addr.ip().to_string(),
-        method.to_string(),
-        path.to_string(),
-    );
-    entry.query = query.map(ToString::to_string);
-    entry.http_version = http_version.to_string();
-    entry.status = status;
-    entry.body_bytes = body_bytes;
-    entry.referer = referer.map(ToString::to_string);
-    entry.user_agent = user_agent.map(ToString::to_string);
-    entry.request_time_us = request_time_us;
-
-    logger::log_access(&entry, format);
 }

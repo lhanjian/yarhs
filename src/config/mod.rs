@@ -11,8 +11,9 @@ use std::sync::Arc;
 // Re-export public types
 pub use state::AppState;
 pub use types::{
-    Config, DynamicConfig, DynamicPerformanceConfig, DynamicServerConfig, HealthConfig, HttpConfig,
-    LoggingConfig, RouteHandler, RoutesConfig,
+    Config, DynamicConfig, DynamicPerformanceConfig, DynamicServerConfig, HeaderMatcher,
+    HealthConfig, HttpConfig, LoggingConfig, Route, RouteAction, RouteHandler, RouteMatch,
+    RoutesConfig, VirtualHost,
 };
 pub use version::ResourceType;
 
@@ -72,6 +73,8 @@ impl Config {
                 write_timeout: self.performance.write_timeout,
                 max_connections: self.performance.max_connections,
             },
+            // Initialize with empty virtual hosts (will use legacy routes)
+            virtual_hosts: Arc::new(Vec::new()),
         }
     }
 }

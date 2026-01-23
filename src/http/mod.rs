@@ -12,5 +12,6 @@ pub mod response;
 pub use range::parse_range_header;
 pub use response::{
     build_304_response, build_404_response, build_405_response, build_413_response,
-    build_416_response, build_health_response, build_options_response, build_redirect_response,
+    build_416_response, build_direct_response, build_health_response, build_options_response,
+    build_redirect_response, build_redirect_response_with_code,
 };

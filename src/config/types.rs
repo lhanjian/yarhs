@@ -23,6 +23,8 @@ pub struct DynamicConfig {
     pub http: Arc<HttpConfig>,
     pub routes: Arc<RoutesConfig>,
     pub performance: DynamicPerformanceConfig,
+    /// Virtual hosts configuration (xDS-compatible)
+    pub virtual_hosts: Arc<Vec<VirtualHost>>,
 }
 
 /// Dynamic performance configuration
@@ -161,4 +163,111 @@ pub struct HttpConfig {
     pub server_name: String,
     pub enable_cors: bool,
     pub max_body_size: u64,
+}
+
+// ============================================
+// xDS-compatible Virtual Host types
+// ============================================
+
+/// Virtual host configuration - routes requests based on Host header
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct VirtualHost {
+    /// Unique name for this virtual host
+    pub name: String,
+    /// Domain patterns to match (e.g., "api.example.com", "*.example.com", "*")
+    pub domains: Vec<String>,
+    /// Routes within this virtual host (matched in order)
+    #[serde(default)]
+    pub routes: Vec<Route>,
+    /// Default index files for this virtual host
+    #[serde(default)]
+    pub index_files: Option<Vec<String>>,
+}
+
+/// xDS Route - matches requests and dispatches to actions
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Route {
+    /// Optional route name for identification
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Match conditions (prefix, path, headers)
+    #[serde(rename = "match")]
+    pub match_rule: RouteMatch,
+    /// Action to take when matched
+    #[serde(flatten)]
+    pub action: RouteAction,
+}
+
+/// Route matching conditions
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct RouteMatch {
+    /// Path prefix match (e.g., "/api" matches "/api/users")
+    #[serde(default)]
+    pub prefix: Option<String>,
+    /// Exact path match
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Header matchers (optional)
+    #[serde(default)]
+    pub headers: Option<Vec<HeaderMatcher>>,
+}
+
+/// Header matching condition
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct HeaderMatcher {
+    /// Header name
+    pub name: String,
+    /// Expected value (exact match)
+    #[serde(default)]
+    pub exact: Option<String>,
+    /// Prefix match
+    #[serde(default)]
+    pub prefix: Option<String>,
+    /// Check if header is present
+    #[serde(default)]
+    pub present: Option<bool>,
+}
+
+/// Route action - what to do when a route matches
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RouteAction {
+    /// Serve files from a directory
+    Dir { path: String },
+    /// Serve a specific file
+    File { path: String },
+    /// HTTP redirect
+    Redirect {
+        target: String,
+        #[serde(default = "default_redirect_code")]
+        code: u16,
+    },
+    /// Direct response (e.g., for health checks, errors)
+    Direct {
+        status: u16,
+        #[serde(default)]
+        body: Option<String>,
+        #[serde(default)]
+        content_type: Option<String>,
+    },
+}
+
+#[allow(clippy::missing_const_for_fn)]
+fn default_redirect_code() -> u16 {
+    302
+}
+
+impl RouteAction {
+    /// Convert legacy `RouteHandler` to `RouteAction`
+    #[allow(dead_code)]
+    pub fn from_handler(handler: &RouteHandler) -> Self {
+        match handler {
+            RouteHandler::Dir { path } => Self::Dir { path: path.clone() },
+            RouteHandler::File { path } => Self::File { path: path.clone() },
+            RouteHandler::Redirect { target } => Self::Redirect {
+                target: target.clone(),
+                code: 302,
+            },
+        }
+    }
 }

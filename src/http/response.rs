@@ -118,14 +118,38 @@ pub fn build_416_response(file_size: usize) -> Response<Full<Bytes>> {
 
 /// Build 302 redirect response
 pub fn build_redirect_response(target: &str) -> Response<Full<Bytes>> {
+    build_redirect_response_with_code(target, 302)
+}
+
+/// Build redirect response with custom status code
+pub fn build_redirect_response_with_code(target: &str, code: u16) -> Response<Full<Bytes>> {
     Response::builder()
-        .status(302)
+        .status(code)
         .header("Location", target)
         .header("Content-Type", "text/plain")
         .body(Full::new(Bytes::from("Redirecting...")))
         .unwrap_or_else(|e| {
-            log_build_error("302", &e);
+            log_build_error(&code.to_string(), &e);
             Response::new(Full::new(Bytes::from("Redirecting...")))
+        })
+}
+
+/// Build direct response with custom status, body, and content type
+pub fn build_direct_response(
+    status: u16,
+    body: Option<&str>,
+    content_type: Option<&str>,
+) -> Response<Full<Bytes>> {
+    let body_bytes = body.map(|b| Bytes::from(b.to_string())).unwrap_or_default();
+    let ct = content_type.unwrap_or("text/plain; charset=utf-8");
+
+    Response::builder()
+        .status(status)
+        .header("Content-Type", ct)
+        .body(Full::new(body_bytes))
+        .unwrap_or_else(|e| {
+            log_build_error(&status.to_string(), &e);
+            Response::new(Full::new(Bytes::new()))
         })
 }
 

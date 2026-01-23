@@ -104,6 +104,37 @@ pub fn log_access(entry: &AccessLogEntry, format: &str) {
     write_access(&entry.format(format));
 }
 
+/// Log access entry with all parameters (convenience function for router)
+#[allow(clippy::too_many_arguments)]
+pub fn log_access_request(
+    remote_addr: &std::net::SocketAddr,
+    method: &str,
+    path: &str,
+    query: Option<&str>,
+    http_version: &str,
+    status: u16,
+    body_bytes: usize,
+    referer: Option<&str>,
+    user_agent: Option<&str>,
+    request_time_us: u64,
+    format: &str,
+) {
+    let mut entry = AccessLogEntry::new(
+        remote_addr.ip().to_string(),
+        method.to_string(),
+        path.to_string(),
+    );
+    entry.query = query.map(ToString::to_string);
+    entry.http_version = http_version.to_string();
+    entry.status = status;
+    entry.body_bytes = body_bytes;
+    entry.referer = referer.map(ToString::to_string);
+    entry.user_agent = user_agent.map(ToString::to_string);
+    entry.request_time_us = request_time_us;
+
+    log_access(&entry, format);
+}
+
 pub fn log_api_request(method: &str, path: &str, status: u16) {
     write_info(&format!("[API] {method} {path} - {status}"));
 }

@@ -78,6 +78,7 @@ echo "║    ✓ Root Path Mapping                    ║"
 echo "║    ✓ Concurrent Requests                  ║"
 echo "║    ✓ Health Check Endpoints               ║"
 echo "║    ✓ Access Log Formats                   ║"
+echo "║    ✓ Virtual Host Routing                 ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 

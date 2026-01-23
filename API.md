@@ -30,12 +30,14 @@ YARHS provides a dynamic configuration API inspired by Envoy's xDS (x Discovery 
 | POST | `/v1/discovery:logging` | Update logging config |
 | GET | `/v1/discovery:performance` | Get performance config |
 | POST | `/v1/discovery:performance` | Update performance config |
+| GET | `/v1/discovery:vhosts` | Get virtual hosts config |
+| POST | `/v1/discovery:vhosts` | Update virtual hosts config |
 
 ---
 
 ## Resource Types
 
-YARHS defines 5 resource types:
+YARHS defines 6 resource types:
 
 | Type | Description | Changes Require Restart |
 |------|-------------|------------------------|
@@ -44,6 +46,7 @@ YARHS defines 5 resource types:
 | `HTTP` | HTTP settings (CORS, headers) | ❌ No (hot reload) |
 | `LOGGING` | Log level, access log | ❌ No (hot reload) |
 | `PERFORMANCE` | Timeouts, connections | ❌ No (hot reload) |
+| `VIRTUAL_HOST` | Domain-based routing | ❌ No (hot reload) |
 
 ---
 
@@ -335,6 +338,92 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
   "max_connections": 5000
 }
 ```
+
+### VIRTUAL_HOST Resource
+
+```json
+{
+  "virtual_hosts": [
+    {
+      "name": "api-site",
+      "domains": ["api.example.com"],
+      "routes": [
+        {
+          "name": "api-v1",
+          "match": {
+            "prefix": "/v1",
+            "headers": [
+              {"name": "X-API-Version", "exact": "1"}
+            ]
+          },
+          "type": "dir",
+          "path": "/var/www/api/v1"
+        }
+      ]
+    },
+    {
+      "name": "www-site",
+      "domains": ["www.example.com", "*.example.com"],
+      "routes": [
+        {
+          "name": "static",
+          "match": {"prefix": "/"},
+          "type": "dir",
+          "path": "/var/www/html"
+        }
+      ]
+    },
+    {
+      "name": "catch-all",
+      "domains": ["*"],
+      "routes": [
+        {
+          "name": "default",
+          "match": {"prefix": "/"},
+          "type": "direct",
+          "status": 404,
+          "body": "Unknown host"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**VirtualHost Fields:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique identifier for the virtual host |
+| `domains` | array | Yes | List of domains to match (`*` = catch-all, `*.example.com` = wildcard) |
+| `routes` | array | Yes | List of routes for this virtual host |
+| `index_files` | array | No | Override default index files for this host |
+
+**Route Fields:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | No | Optional route name for identification |
+| `match` | object | Yes | Match conditions (prefix, path, headers) |
+| `type` | string | Yes | Action type: `dir`, `file`, `redirect`, `direct` |
+
+**Match Conditions:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `prefix` | string | Path prefix match (e.g., `/api` matches `/api/users`) |
+| `path` | string | Exact path match |
+| `headers` | array | Header matchers (name, exact/prefix/present) |
+
+**Route Actions:**
+| Type | Fields | Description |
+|------|--------|-------------|
+| `dir` | `path` | Serve files from directory |
+| `file` | `path` | Serve a specific file |
+| `redirect` | `target`, `code` (default: 302) | HTTP redirect |
+| `direct` | `status`, `body`, `content_type` | Direct response |
+
+**Domain Matching Priority:**
+1. Exact match (`api.example.com`)
+2. Wildcard match (`*.example.com`)
+3. Catch-all (`*`)
 
 ---
 

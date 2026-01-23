@@ -128,7 +128,65 @@ curl -X POST http://localhost:8000/v1/discovery:logging \
 # error_log_file = "/var/log/yarhs/error.log"
 ```
 
-### 8. 高性能
+### 8. 虚拟主机路由（xDS 兼容）
+- ✅ **基于域名路由** - 根据 Host 请求头路由请求
+- ✅ **通配符域名** - 支持 `*.example.com` 模式
+- ✅ **默认主机** - 使用 `*` 域名处理未匹配请求
+- ✅ **优先级匹配** - 精确匹配 > 通配符 > 全匹配
+- ✅ **路径和请求头匹配** - 按路径前缀、精确路径和请求头路由
+- ✅ **多种动作** - Dir（目录）、File（文件）、Redirect（重定向）、Direct（直接响应）
+- ✅ **向后兼容** - 虚拟主机为空时回退到传统路由
+
+```bash
+# 通过 API 配置虚拟主机
+curl -X POST http://localhost:8000/v1/discovery:vhosts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resources": [{
+      "virtual_hosts": [
+        {
+          "name": "api-site",
+          "domains": ["api.example.com"],
+          "routes": [
+            {
+              "name": "api-root",
+              "match": {"prefix": "/"},
+              "type": "dir",
+              "path": "/var/www/api"
+            }
+          ]
+        },
+        {
+          "name": "www-site",
+          "domains": ["www.example.com", "*.example.com"],
+          "routes": [
+            {
+              "name": "www-root",
+              "match": {"prefix": "/"},
+              "type": "dir",
+              "path": "/var/www/html"
+            }
+          ]
+        },
+        {
+          "name": "catch-all",
+          "domains": ["*"],
+          "routes": [
+            {
+              "name": "default",
+              "match": {"prefix": "/"},
+              "type": "direct",
+              "status": 404,
+              "body": "未知主机"
+            }
+          ]
+        }
+      ]
+    }]
+  }'
+```
+
+### 9. 高性能
 - **40k+ QPS** (静态文件)
 - **63k+ QPS** (API 接口)
 - 全异步 I/O，基于 Tokio + Hyper
@@ -153,6 +211,10 @@ yarhs/
 │   │   ├── types.rs      - 配置类型定义
 │   │   ├── state.rs      - AppState 共享状态
 │   │   └── version.rs    - xDS 版本管理
+│   ├── routing/          - 虚拟主机路由模块
+│   │   ├── mod.rs        - 模块导出
+│   │   ├── vhost.rs      - 虚拟主机匹配
+│   │   └── matcher.rs    - 路由匹配逻辑
 │   └── server/           - 服务器核心模块
 │       ├── mod.rs        - 模块导出
 │       ├── listener.rs   - TCP 监听器 (SO_REUSEPORT)

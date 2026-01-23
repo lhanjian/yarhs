@@ -2,7 +2,7 @@
 // Request/response types for xDS Discovery API
 
 use crate::config::{
-    DynamicPerformanceConfig, HealthConfig, HttpConfig, LoggingConfig, RouteHandler,
+    DynamicPerformanceConfig, HealthConfig, HttpConfig, LoggingConfig, RouteHandler, VirtualHost,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -49,6 +49,7 @@ pub struct ResourceSnapshot {
     pub http: VersionedValue<HttpConfig>,
     pub logging: VersionedValue<LoggingConfig>,
     pub performance: VersionedValue<DynamicPerformanceConfig>,
+    pub virtual_hosts: VersionedValue<Vec<VirtualHost>>,
 }
 
 #[derive(Debug, Serialize)]

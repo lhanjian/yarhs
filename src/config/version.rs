@@ -14,6 +14,7 @@ pub enum ResourceType {
     Http,
     Logging,
     Performance,
+    VirtualHost,
 }
 
 impl std::fmt::Display for ResourceType {
@@ -24,6 +25,7 @@ impl std::fmt::Display for ResourceType {
             Self::Http => write!(f, "HTTP"),
             Self::Logging => write!(f, "LOGGING"),
             Self::Performance => write!(f, "PERFORMANCE"),
+            Self::VirtualHost => write!(f, "VIRTUAL_HOST"),
         }
     }
 }
@@ -84,6 +86,7 @@ pub struct XdsVersionManager {
     pub http: VersionedResource,
     pub logging: VersionedResource,
     pub performance: VersionedResource,
+    pub virtual_host: VersionedResource,
 }
 
 impl XdsVersionManager {
@@ -94,6 +97,7 @@ impl XdsVersionManager {
             http: VersionedResource::new(),
             logging: VersionedResource::new(),
             performance: VersionedResource::new(),
+            virtual_host: VersionedResource::new(),
         }
     }
 
@@ -104,6 +108,7 @@ impl XdsVersionManager {
             ResourceType::Http => &self.http,
             ResourceType::Logging => &self.logging,
             ResourceType::Performance => &self.performance,
+            ResourceType::VirtualHost => &self.virtual_host,
         }
     }
 

@@ -67,6 +67,13 @@ pub async fn handle_api_config(
         (Method::POST, "/v1/discovery:performance") => {
             handlers::handle_discovery_post(req, state, ResourceType::Performance).await
         }
+        // Discover virtual_hosts configuration
+        (Method::GET, "/v1/discovery:vhosts") => {
+            handlers::handle_discovery_get(state, ResourceType::VirtualHost).await
+        }
+        (Method::POST, "/v1/discovery:vhosts") => {
+            handlers::handle_discovery_post(req, state, ResourceType::VirtualHost).await
+        }
         // Unknown route
         _ => {
             logger::log_api_request(req.method().as_str(), path, 404);

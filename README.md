@@ -128,7 +128,65 @@ curl -X POST http://localhost:8000/v1/discovery:logging \
 # error_log_file = "/var/log/yarhs/error.log"
 ```
 
-### 8. High Performance
+### 8. Virtual Host Routing (xDS Compatible)
+- ✅ **Domain-based Routing** - Route requests based on Host header
+- ✅ **Wildcard Domains** - Support `*.example.com` patterns
+- ✅ **Catch-all Host** - Default handling with `*` domain
+- ✅ **Priority Matching** - Exact > Wildcard > Catch-all
+- ✅ **Path & Header Matching** - Route by path prefix, exact path, and headers
+- ✅ **Multiple Actions** - Dir, File, Redirect, Direct response
+- ✅ **Backward Compatible** - Falls back to legacy routes when vhosts empty
+
+```bash
+# Configure virtual hosts via API
+curl -X POST http://localhost:8000/v1/discovery:vhosts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resources": [{
+      "virtual_hosts": [
+        {
+          "name": "api-site",
+          "domains": ["api.example.com"],
+          "routes": [
+            {
+              "name": "api-root",
+              "match": {"prefix": "/"},
+              "type": "dir",
+              "path": "/var/www/api"
+            }
+          ]
+        },
+        {
+          "name": "www-site",
+          "domains": ["www.example.com", "*.example.com"],
+          "routes": [
+            {
+              "name": "www-root",
+              "match": {"prefix": "/"},
+              "type": "dir",
+              "path": "/var/www/html"
+            }
+          ]
+        },
+        {
+          "name": "catch-all",
+          "domains": ["*"],
+          "routes": [
+            {
+              "name": "default",
+              "match": {"prefix": "/"},
+              "type": "direct",
+              "status": 404,
+              "body": "Unknown host"
+            }
+          ]
+        }
+      ]
+    }]
+  }'
+```
+
+### 9. High Performance
 - **40k+ QPS** (static files)
 - **63k+ QPS** (API endpoints)
 - Fully async I/O, built on Tokio + Hyper
@@ -153,6 +211,10 @@ yarhs/
 │   │   ├── types.rs      - Config type definitions
 │   │   ├── state.rs      - AppState shared state
 │   │   └── version.rs    - xDS version management
+│   ├── routing/          - Virtual host routing module
+│   │   ├── mod.rs        - Module exports
+│   │   ├── vhost.rs      - Virtual host matching
+│   │   └── matcher.rs    - Route matching logic
 │   └── server/           - Server core module
 │       ├── mod.rs        - Module exports
 │       ├── listener.rs   - TCP listener (SO_REUSEPORT)

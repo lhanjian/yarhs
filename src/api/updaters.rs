@@ -1,6 +1,6 @@
 // Resource update functions module
 
-use crate::config::{AppState, DynamicPerformanceConfig, HttpConfig, LoggingConfig, RoutesConfig};
+use crate::config::{AppState, DynamicPerformanceConfig, HttpConfig, LoggingConfig, RoutesConfig, VirtualHost};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -172,4 +172,42 @@ pub async fn update_performance(
     }
 
     Ok("Performance config updated".to_string())
+}
+
+/// Update `VirtualHost` configuration
+pub async fn update_virtual_hosts(
+    state: &Arc<AppState>,
+    resource: &serde_json::Value,
+) -> Result<String, String> {
+    // Support both wrapped object format {"virtual_hosts": [...]} and direct array format [...]
+    let virtual_hosts: Vec<VirtualHost> = if let Some(obj) = resource.as_object() {
+        if let Some(vhosts) = obj.get("virtual_hosts") {
+            serde_json::from_value(vhosts.clone())
+                .map_err(|e| format!("Invalid virtual_hosts array: {e}"))?
+        } else {
+            return Err("Missing 'virtual_hosts' field".to_string());
+        }
+    } else {
+        serde_json::from_value(resource.clone())
+            .map_err(|e| format!("Invalid virtual_hosts resource: {e}"))?
+    };
+
+    // Validate virtual hosts
+    for (i, vhost) in virtual_hosts.iter().enumerate() {
+        if vhost.domains.is_empty() {
+            return Err(format!("VirtualHost at index {i} has no domains"));
+        }
+        if vhost.name.is_empty() {
+            return Err(format!("VirtualHost at index {i} has no name"));
+        }
+    }
+
+    let count = virtual_hosts.len();
+
+    {
+        let mut config = state.dynamic_config.write().await;
+        config.virtual_hosts = Arc::new(virtual_hosts);
+    }
+
+    Ok(format!("VirtualHosts updated: {count} host(s) configured"))
 }

@@ -7,6 +7,7 @@ mod config;
 mod handler;
 mod http;
 mod logger;
+mod routing;
 mod server;
 
 fn parse_args() -> Option<String> {

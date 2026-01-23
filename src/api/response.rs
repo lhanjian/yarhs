@@ -42,7 +42,7 @@ pub fn not_found() -> Response<Full<Bytes>> {
     Response::builder()
         .status(StatusCode::NOT_FOUND)
         .header("Content-Type", "application/json")
-        .body(Full::new(Bytes::from(r#"{"error":"Not Found","available_endpoints":["/v1/discovery","/v1/discovery:listeners","/v1/discovery:routes","/v1/discovery:http","/v1/discovery:logging","/v1/discovery:performance"]}"#)))
+        .body(Full::new(Bytes::from(r#"{"error":"Not Found","available_endpoints":["/v1/discovery","/v1/discovery:listeners","/v1/discovery:routes","/v1/discovery:http","/v1/discovery:logging","/v1/discovery:performance","/v1/discovery:vhosts"]}"#)))
         .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Not Found"))))
 }
 
