@@ -76,7 +76,6 @@ YARHS defines 6 resource types:
 {
   "@type": "type.yarhs.io/ROUTE",
   "name": "default",
-  "favicon_paths": [...],
   "index_files": [...],
   "custom_routes": {...}
 }
@@ -223,7 +222,6 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
   -H "Content-Type: application/json" \
   -d '{
     "resources": [{
-      "favicon_paths": ["/favicon.ico", "/favicon.svg"],
       "index_files": ["index.html", "index.htm"],
       "custom_routes": {
         "/home": { "type": "file", "path": "templates/index.html" },
@@ -290,7 +288,6 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
 
 ```json
 {
-  "favicon_paths": ["/favicon.ico", "/favicon.svg"],
   "index_files": ["index.html", "index.htm"],
   "custom_routes": {
     "/path": {

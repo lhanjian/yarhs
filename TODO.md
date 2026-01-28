@@ -1,187 +1,135 @@
-# TODO: Architecture Improvements
+# TODO: YARHS Roadmap
 
-A gap analysis comparing the current project with senior engineer standards.
+## ✅ Completed Features
+
+### Core Functionality
+- [x] Static file serving with MIME detection
+- [x] Dynamic routing (file, dir, redirect)
+- [x] ETag + 304 conditional requests
+- [x] Range requests (resume download)
+- [x] HTTP method handling (GET/HEAD/OPTIONS/405)
+- [x] Hot restart with SO_REUSEPORT
+
+### Configuration & API
+- [x] xDS-style configuration API
+- [x] Version control with optimistic locking
+- [x] Virtual host routing with domain matching
+- [x] Health check endpoints (/healthz, /readyz)
+- [x] Access log formatting (combined, common, json, custom)
+- [x] Log file output
+
+### Operations
+- [x] Signal handling (SIGTERM/SIGINT/SIGHUP)
+- [x] Graceful shutdown with connection draining
+- [x] Configuration persistence (state.toml, opt-in via config)
+- [x] API Dashboard Web UI
+- [x] Unit tests (33 tests) + Integration tests (177+ tests)
 
 ---
 
-## 🔍 Gap Analysis
+## 🚧 In Progress / Near-term
 
-### 1. **Error Handling: Lack of Unified Error Type System**
+### 1. **HTTPS/TLS Support** ⭐⭐⭐⭐⭐
+**Why**: Production deployment requires encryption. Currently HTTP only.
 
-**Current:**
 ```rust
-fn main() -> Result<(), Box<dyn std::error::Error>>  // Generic error, loses context
+// Add rustls support
+[dependencies]
+tokio-rustls = "0.25"
+rustls-pemfile = "2.0"
 ```
 
-**Senior Approach:**
-```rust
-#[derive(Debug, thiserror::Error)]
-enum YarhsError {
-    #[error("Config error: {0}")]
-    Config(#[from] config::ConfigError),
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Route not found: {path}")]
-    RouteNotFound { path: String },
-}
+**Scope**:
+- [ ] Load certificate and private key from files
+- [ ] TLS configuration in config.toml
+- [ ] HTTP -> HTTPS redirect option
+- [ ] Dynamic certificate reload via API
+
+---
+
+### 2. **Observability: Metrics Endpoint** ⭐⭐⭐⭐
+
+**Current**: Only println logging, no metrics export.
+
+**Needed**:
+- [ ] `/metrics` endpoint (Prometheus format)
+- [ ] Basic metrics: `http_requests_total`, `http_request_duration_seconds`
+- [ ] Connection count, active requests
+
 ```
-
-**Gap**: Cannot precisely capture, classify, or report errors; logs and monitoring cannot pinpoint root causes.
-
----
-
-### 2. **Observability: Lack of Structured Metrics and Tracing**
-
-**Current**: `println!` logging, no metrics exposed
-
-**Senior Approach**:
-- Prometheus metrics (QPS, latency percentiles, connection count)
-- OpenTelemetry tracing (request chain tracing)
-- Structured logging (JSON format, with request_id)
-
-```rust
-// Missing code like this
-metrics::counter!("http_requests_total", "method" => method, "status" => status);
-metrics::histogram!("http_request_duration_seconds").record(duration);
-```
-
----
-
-### 3. **Configuration Management: Incomplete Hot-Reload Mechanism**
-
-**Current**: xDS API can update in-memory config, but:
-- No config persistence (lost on restart)
-- No config validation/rollback
-- No config change audit
-
-**Senior Approach**:
-- Validate before write + dry-run
-- Persist changes to storage
-- Support `config diff` / `config rollback`
-- Publish change events (support external system subscription)
-
----
-
-### 4. **Lifecycle Management: Incomplete Graceful Shutdown**
-
-**Current**: Has SO_REUSEPORT hot restart, but lacks:
-- Signal handling (SIGTERM/SIGINT)
-- Connection draining timeout
-- Health check endpoints (/healthz, /readyz)
-
-**Senior Approach**:
-```rust
-tokio::select! {
-    _ = shutdown_signal() => {
-        // Stop accepting new connections
-        // Wait for existing connections to complete (with timeout)
-        // Clean up resources
-    }
-}
+# Example output
+# HELP http_requests_total Total HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{method="GET",status="200"} 12345
+http_requests_total{method="GET",status="404"} 23
 ```
 
 ---
 
-### 5. **Testing: Insufficient Unit Test Coverage**
+### 3. **Reverse Proxy / Load Balancer** ⭐⭐⭐⭐
 
-**Current**: `cargo test` shows 0 tests, only integration test scripts
+**Why**: Many use cases need proxying to backend services.
 
-**Senior Approach**:
-```rust
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn route_handler_matches_file() { ... }
-    
-    #[tokio::test]
-    async fn api_update_routes_returns_ack() { ... }
-    
-    #[test]
-    fn etag_generation_deterministic() { ... }
-}
-```
-
-Test pyramid: Unit tests > Integration tests > E2E tests
+**Scope**:
+- [ ] Proxy route type: `{"type": "proxy", "upstream": "http://backend:8080"}`
+- [ ] Connection pooling to backends
+- [ ] Health checks for upstreams
+- [ ] Load balancing (round-robin, least-conn)
 
 ---
 
-### 6. **Abstraction Level: Lack of Trait Abstraction**
+### 4. **Rate Limiting** ⭐⭐⭐
 
-**Current**: Concrete implementation coupling, e.g., `handle_api_config` directly matches paths
+**Why**: Protection against abuse and DoS.
 
-**Senior Approach**:
-```rust
-trait ResourceHandler {
-    fn resource_type(&self) -> ResourceType;
-    async fn get(&self, state: &AppState) -> Response;
-    async fn update(&self, req: Request, state: &AppState) -> Response;
-}
-
-// Benefits:
-// - Add new resource types without changing core logic
-// - Test each handler independently
-// - Support middleware (auth, rate limiting)
-```
+**Scope**:
+- [ ] Per-IP rate limiting
+- [ ] Token bucket or sliding window algorithm
+- [ ] Configurable limits per route/vhost
+- [ ] Return 429 Too Many Requests
 
 ---
 
-### 7. **Security: Lack of Basic Protection**
+## 📋 Backlog (Future)
 
-**Current**:
-- No API authentication/authorization
-- No request rate limiting
-- No audit logging
+### Security
+- [ ] Basic Auth / Token verification for admin API
+- [x] Request body size limits (`max_body_size` in config)
+- [ ] Audit logging for config changes
 
-**Production Requirements**:
-```rust
-// At minimum need:
-- Basic Auth / Token verification
-- Per-IP rate limiting
-- Sensitive operation audit
-```
+### Configuration
+- [x] Config persistence to file (state.toml)
+- [ ] Config diff / rollback capability
+- [ ] WebSocket support for config push
 
----
+### Performance
+- [ ] Sendfile optimization for large files
+- [ ] HTTP/2 support (h2)
+- [ ] Compression (gzip, brotli)
 
-### 8. **Dependency Injection: Hardcoded Dependencies**
-
-**Current**: `AppState` directly holds `RwLock<DynamicConfig>`
-
-**Senior Approach**:
-```rust
-struct AppState<C: ConfigStore, M: MetricsRecorder> {
-    config: C,
-    metrics: M,
-}
-
-// Benefits:
-// - Mock in tests
-// - Swap implementations (memory/Redis/etcd)
-```
+### Developer Experience
+- [ ] WASM build for edge deployment
+- [ ] Docker image
+- [ ] Helm chart for Kubernetes
 
 ---
 
-## 📊 Gap Summary
+## 📊 Current Status Summary
 
-| Dimension | Current Level | Senior Level | Gap |
-|-----------|---------------|--------------|-----|
-| Error Handling | Generic Box<dyn Error> | Custom error types + context | ⭐⭐⭐ |
-| Observability | println logging | Metrics + Tracing + structured logs | ⭐⭐⭐⭐ |
-| Test Coverage | 0 unit tests | 80%+ coverage | ⭐⭐⭐⭐ |
-| Abstraction Design | Concrete impl | Trait abstraction + DI | ⭐⭐⭐ |
-| Production Ready | Basic features | Health check/graceful shutdown/rate limit/auth | ⭐⭐⭐⭐ |
-| Config Management | In-memory hot-reload | Persistence + validation + audit + rollback | ⭐⭐⭐ |
-
----
-
-## 💡 Priority Improvements
-
-- [ ] **Add structured error types** (low effort, high value)
-- [ ] **Add /healthz endpoint** (required for K8s deployment)
-- [ ] **Add basic Prometheus metrics**
-- [ ] **Add core logic unit tests**
-- [ ] **Implement graceful shutdown**
+| Category | Status | Notes |
+|----------|--------|-------|
+| HTTP Server | ✅ Complete | GET/HEAD/OPTIONS, static files, caching |
+| Routing | ✅ Complete | Virtual hosts, path matching, redirects |
+| API | ✅ Complete | xDS-style, version control, web dashboard |
+| Health | ✅ Complete | /healthz, /readyz, configurable |
+| Logging | ✅ Complete | Multiple formats, file output |
+| Persistence | ✅ Complete | state.toml for config persistence |
+| Testing | ✅ Good | 33 unit + 177 integration tests |
+| TLS | ❌ Missing | Priority #1 |
+| Metrics | ❌ Missing | Priority #2 |
+| Proxy | ❌ Missing | Priority #3 |
 
 ---
 
-**Current Status**: Feature-complete prototype  
-**Target**: Production-grade service (requires investment in observability, reliability, security)
+**Current Version**: v0.3.0 - Feature-complete HTTP server  
+**Next Milestone**: v0.4.0 - HTTPS + Metrics

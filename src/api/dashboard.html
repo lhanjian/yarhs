@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YARHS Dashboard</title>
+    <style>
+        :root {
+            --bg-primary: #1a1b26;
+            --bg-secondary: #24283b;
+            --bg-card: #1f2335;
+            --text-primary: #c0caf5;
+            --text-secondary: #a9b1d6;
+            --text-muted: #565f89;
+            --accent: #7aa2f7;
+            --accent-hover: #89b4fa;
+            --success: #9ece6a;
+            --warning: #e0af68;
+            --error: #f7768e;
+            --border: #3b4261;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 0;
+            margin-bottom: 24px;
+        }
+        
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        
+        .logo span {
+            color: var(--text-muted);
+            font-weight: 400;
+            font-size: 14px;
+            margin-left: 12px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.offline {
+            background: var(--error);
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .card-header {
+            background: var(--bg-secondary);
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .card-title .icon {
+            font-size: 18px;
+        }
+        
+        .card-body {
+            padding: 20px;
+        }
+        
+        .version-badge {
+            background: var(--accent);
+            color: var(--bg-primary);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .config-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .config-item:last-child {
+            border-bottom: none;
+        }
+        
+        .config-key {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+        
+        .config-value {
+            color: var(--text-primary);
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 14px;
+            background: var(--bg-secondary);
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+        
+        .config-value.boolean-true {
+            color: var(--success);
+        }
+        
+        .config-value.boolean-false {
+            color: var(--error);
+        }
+        
+        .btn {
+            background: var(--accent);
+            color: var(--bg-primary);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+        
+        .btn-danger {
+            background: var(--error);
+        }
+        
+        .btn-danger:hover {
+            background: #ff8fa3;
+        }
+        
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .json-view {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .json-key {
+            color: var(--accent);
+        }
+        
+        .json-string {
+            color: var(--success);
+        }
+        
+        .json-number {
+            color: var(--warning);
+        }
+        
+        .json-boolean {
+            color: var(--error);
+        }
+        
+        .json-null {
+            color: var(--text-muted);
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            background: var(--bg-secondary);
+            padding: 4px;
+            border-radius: 8px;
+        }
+        
+        .tab {
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+        
+        .tab:hover {
+            color: var(--text-primary);
+        }
+        
+        .tab.active {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .routes-list {
+            list-style: none;
+        }
+        
+        .route-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .route-item:last-child {
+            border-bottom: none;
+        }
+        
+        .route-path {
+            font-family: 'Fira Code', monospace;
+            color: var(--accent);
+            min-width: 120px;
+        }
+        
+        .route-type {
+            background: var(--bg-secondary);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        
+        .route-target {
+            color: var(--text-secondary);
+            font-family: 'Fira Code', monospace;
+            font-size: 13px;
+        }
+        
+        .vhost-card {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        
+        .vhost-name {
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+        
+        .vhost-domains {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        
+        .domain-tag {
+            background: var(--bg-card);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+        
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 16px 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+        
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        
+        .toast.success {
+            border-left: 4px solid var(--success);
+        }
+        
+        .toast.error {
+            border-left: 4px solid var(--error);
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .refresh-time {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        
+        footer {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+        
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .card-header {
+                flex-direction: column;
+                gap: 10px;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">
+                YARHS<span>Dashboard v0.3.0</span>
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Connected</span>
+                <span class="refresh-time" id="refreshTime"></span>
+            </div>
+        </div>
+    </header>
+    
+    <main class="container">
+        <div class="grid">
+            <!-- Listener Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">🌐</span>
+                        Listener
+                    </div>
+                    <span class="version-badge" id="listenerVersion">v1</span>
+                </div>
+                <div class="card-body" id="listenerContent">
+                    <div class="loading"></div>
+                </div>
+            </div>
+            
+            <!-- HTTP Config Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">⚙️</span>
+                        HTTP Config
+                    </div>
+                    <span class="version-badge" id="httpVersion">v1</span>
+                </div>
+                <div class="card-body" id="httpContent">
+                    <div class="loading"></div>
+                </div>
+            </div>
+            
+            <!-- Performance Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">⚡</span>
+                        Performance
+                    </div>
+                    <span class="version-badge" id="performanceVersion">v1</span>
+                </div>
+                <div class="card-body" id="performanceContent">
+                    <div class="loading"></div>
+                </div>
+            </div>
+            
+            <!-- Logging Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">📝</span>
+                        Logging
+                    </div>
+                    <span class="version-badge" id="loggingVersion">v1</span>
+                </div>
+                <div class="card-body" id="loggingContent">
+                    <div class="loading"></div>
+                </div>
+            </div>
+            
+            <!-- Routes Card -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">🛤️</span>
+                        Routes
+                    </div>
+                    <span class="version-badge" id="routesVersion">v1</span>
+                </div>
+                <div class="card-body" id="routesContent">
+                    <div class="loading"></div>
+                </div>
+            </div>
+            
+            <!-- Virtual Hosts Card -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">🏠</span>
+                        Virtual Hosts
+                    </div>
+                    <span class="version-badge" id="vhostsVersion">v1</span>
+                </div>
+                <div class="card-body" id="vhostsContent">
+                    <div class="loading"></div>
+                </div>
+            </div>
+            
+            <!-- Persistence State Card -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">💾</span>
+                        Persistence State
+                    </div>
+                    <div class="actions" style="margin: 0;">
+                        <button class="btn btn-danger btn-small" onclick="clearState()">Clear State</button>
+                    </div>
+                </div>
+                <div class="card-body" id="stateContent">
+                    <div class="loading"></div>
+                </div>
+            </div>
+            
+            <!-- Raw Snapshot Card -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">📋</span>
+                        Raw Snapshot
+                    </div>
+                    <div class="actions" style="margin: 0;">
+                        <button class="btn btn-secondary btn-small" onclick="refreshAll()">🔄 Refresh</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab('snapshot')">Snapshot</div>
+                        <div class="tab" onclick="switchTab('listeners')">Listeners</div>
+                        <div class="tab" onclick="switchTab('routes')">Routes</div>
+                        <div class="tab" onclick="switchTab('vhosts')">VHosts</div>
+                    </div>
+                    <div id="tab-snapshot" class="tab-content active">
+                        <div class="json-view" id="snapshotJson"></div>
+                    </div>
+                    <div id="tab-listeners" class="tab-content">
+                        <div class="json-view" id="listenersJson"></div>
+                    </div>
+                    <div id="tab-routes" class="tab-content">
+                        <div class="json-view" id="routesJson"></div>
+                    </div>
+                    <div id="tab-vhosts" class="tab-content">
+                        <div class="json-view" id="vhostsJson"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <footer>
+        <p>YARHS - Yet Another Rust HTTP Server | <a href="https://github.com/example/yarhs">GitHub</a></p>
+    </footer>
+    
+    <div class="toast" id="toast"></div>
+    
+    <script>
+        const API_BASE = window.location.origin;
+        
+        // Format JSON with syntax highlighting
+        function formatJson(obj) {
+            const json = JSON.stringify(obj, null, 2);
+            return json.replace(/(".*?")(?=\s*:)/g, '<span class="json-key">$1</span>')
+                       .replace(/:\s*(".*?")/g, ': <span class="json-string">$1</span>')
+                       .replace(/:\s*(\d+\.?\d*)/g, ': <span class="json-number">$1</span>')
+                       .replace(/:\s*(true|false)/g, ': <span class="json-boolean">$1</span>')
+                       .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>');
+        }
+        
+        // Render config item
+        function configItem(key, value) {
+            let valueClass = 'config-value';
+            let displayValue = value;
+            
+            if (value === true) {
+                valueClass += ' boolean-true';
+                displayValue = '✓ true';
+            } else if (value === false) {
+                valueClass += ' boolean-false';
+                displayValue = '✗ false';
+            } else if (value === null || value === undefined) {
+                displayValue = '—';
+            } else if (typeof value === 'object') {
+                displayValue = JSON.stringify(value);
+            }
+            
+            return `
+                <div class="config-item">
+                    <span class="config-key">${key}</span>
+                    <span class="${valueClass}">${displayValue}</span>
+                </div>
+            `;
+        }
+        
+        // Show toast notification
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+        
+        // Switch tabs
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+        
+        // Fetch and render listener config
+        async function fetchListeners() {
+            try {
+                const res = await fetch(`${API_BASE}/v1/discovery:listeners`);
+                const data = await res.json();
+                
+                document.getElementById('listenerVersion').textContent = `v${data.version_info}`;
+                document.getElementById('listenersJson').innerHTML = formatJson(data);
+                
+                const resource = data.resources[0];
+                document.getElementById('listenerContent').innerHTML = `
+                    <h4 style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">MAIN SERVER</h4>
+                    ${configItem('Host', resource.main_server?.host)}
+                    ${configItem('Port', resource.main_server?.port)}
+                    <h4 style="color: var(--text-muted); font-size: 12px; margin: 16px 0 12px;">API SERVER</h4>
+                    ${configItem('Host', resource.api_server?.host)}
+                    ${configItem('Port', resource.api_server?.port)}
+                    <h4 style="color: var(--text-muted); font-size: 12px; margin: 16px 0 12px;">RUNTIME</h4>
+                    ${configItem('Workers', resource.workers || 'auto (CPU cores)')}
+                `;
+            } catch (e) {
+                document.getElementById('listenerContent').innerHTML = `<div class="empty-state">Failed to load</div>`;
+            }
+        }
+        
+        // Fetch and render HTTP config
+        async function fetchHttp() {
+            try {
+                const res = await fetch(`${API_BASE}/v1/discovery:http`);
+                const data = await res.json();
+                
+                document.getElementById('httpVersion').textContent = `v${data.version_info}`;
+                
+                const resource = data.resources[0];
+                document.getElementById('httpContent').innerHTML = `
+                    ${configItem('Server Name', resource.server_name)}
+                    ${configItem('Content Type', resource.default_content_type)}
+                    ${configItem('Enable CORS', resource.enable_cors)}
+                    ${configItem('Max Body Size', formatBytes(resource.max_body_size))}
+                `;
+            } catch (e) {
+                document.getElementById('httpContent').innerHTML = `<div class="empty-state">Failed to load</div>`;
+            }
+        }
+        
+        // Fetch and render performance config
+        async function fetchPerformance() {
+            try {
+                const res = await fetch(`${API_BASE}/v1/discovery:performance`);
+                const data = await res.json();
+                
+                document.getElementById('performanceVersion').textContent = `v${data.version_info}`;
+                
+                const resource = data.resources[0];
+                document.getElementById('performanceContent').innerHTML = `
+                    ${configItem('Keep-Alive Timeout', `${resource.keep_alive_timeout}s`)}
+                    ${configItem('Read Timeout', `${resource.read_timeout}s`)}
+                    ${configItem('Write Timeout', `${resource.write_timeout}s`)}
+                    ${configItem('Max Connections', resource.max_connections || 'Unlimited')}
+                `;
+            } catch (e) {
+                document.getElementById('performanceContent').innerHTML = `<div class="empty-state">Failed to load</div>`;
+            }
+        }
+        
+        // Fetch and render logging config
+        async function fetchLogging() {
+            try {
+                const res = await fetch(`${API_BASE}/v1/discovery:logging`);
+                const data = await res.json();
+                
+                document.getElementById('loggingVersion').textContent = `v${data.version_info}`;
+                
+                const resource = data.resources[0];
+                document.getElementById('loggingContent').innerHTML = `
+                    ${configItem('Level', resource.level?.toUpperCase())}
+                    ${configItem('Access Log', resource.access_log)}
+                    ${configItem('Show Headers', resource.show_headers)}
+                    ${configItem('Format', resource.access_log_format)}
+                    ${configItem('Access Log File', resource.access_log_file || 'stdout')}
+                    ${configItem('Error Log File', resource.error_log_file || 'stderr')}
+                `;
+            } catch (e) {
+                document.getElementById('loggingContent').innerHTML = `<div class="empty-state">Failed to load</div>`;
+            }
+        }
+        
+        // Fetch and render routes
+        async function fetchRoutes() {
+            try {
+                const res = await fetch(`${API_BASE}/v1/discovery:routes`);
+                const data = await res.json();
+                
+                document.getElementById('routesVersion').textContent = `v${data.version_info}`;
+                document.getElementById('routesJson').innerHTML = formatJson(data);
+                
+                const resource = data.resources[0];
+                const routes = resource.custom_routes || {};
+                const routeKeys = Object.keys(routes);
+                
+                if (routeKeys.length === 0) {
+                    document.getElementById('routesContent').innerHTML = `
+                        <div style="margin-bottom: 16px;">
+                            ${configItem('Index Files', resource.index_files?.join(', '))}
+                        </div>
+                        <h4 style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">HEALTH CHECK</h4>
+                        <div style="margin-bottom: 16px;">
+                            ${configItem('Enabled', resource.health?.enabled)}
+                            ${configItem('Liveness Path', resource.health?.liveness_path)}
+                            ${configItem('Readiness Path', resource.health?.readiness_path)}
+                        </div>
+                        <div class="empty-state">
+                            <div class="icon">🛤️</div>
+                            <p>No custom routes configured</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = `
+                    <div style="margin-bottom: 16px;">
+                        ${configItem('Index Files', resource.index_files?.join(', '))}
+                    </div>
+                    <h4 style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">HEALTH CHECK</h4>
+                    <div style="margin-bottom: 16px;">
+                        ${configItem('Enabled', resource.health?.enabled)}
+                        ${configItem('Liveness Path', resource.health?.liveness_path)}
+                        ${configItem('Readiness Path', resource.health?.readiness_path)}
+                    </div>
+                    <h4 style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">CUSTOM ROUTES</h4>
+                    <ul class="routes-list">
+                `;
+                
+                for (const [path, handler] of Object.entries(routes)) {
+                    const type = handler.type;
+                    const target = handler.path || handler.target || '';
+                    html += `
+                        <li class="route-item">
+                            <span class="route-path">${path}</span>
+                            <span class="route-type">${type}</span>
+                            <span class="route-target">${target}</span>
+                        </li>
+                    `;
+                }
+                
+                html += '</ul>';
+                document.getElementById('routesContent').innerHTML = html;
+            } catch (e) {
+                document.getElementById('routesContent').innerHTML = `<div class="empty-state">Failed to load</div>`;
+            }
+        }
+        
+        // Fetch and render virtual hosts
+        async function fetchVhosts() {
+            try {
+                const res = await fetch(`${API_BASE}/v1/discovery:vhosts`);
+                const data = await res.json();
+                
+                document.getElementById('vhostsVersion').textContent = `v${data.version_info}`;
+                document.getElementById('vhostsJson').innerHTML = formatJson(data);
+                
+                const vhosts = data.resources[0]?.virtual_hosts || [];
+                
+                if (vhosts.length === 0) {
+                    document.getElementById('vhostsContent').innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">🏠</div>
+                            <p>No virtual hosts configured</p>
+                            <p style="font-size: 12px;">Using legacy routes configuration</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = '';
+                for (const vhost of vhosts) {
+                    html += `
+                        <div class="vhost-card">
+                            <div class="vhost-name">${vhost.name}</div>
+                            <div class="vhost-domains">
+                                ${vhost.domains.map(d => `<span class="domain-tag">${d}</span>`).join('')}
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-muted);">
+                                ${vhost.routes?.length || 0} route(s)
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                document.getElementById('vhostsContent').innerHTML = html;
+            } catch (e) {
+                document.getElementById('vhostsContent').innerHTML = `<div class="empty-state">Failed to load</div>`;
+            }
+        }
+        
+        // Fetch and render persistence state
+        async function fetchState() {
+            try {
+                const res = await fetch(`${API_BASE}/v1/state`);
+                const data = await res.json();
+                
+                const hasState = Object.keys(data.persisted_config || {}).length > 0;
+                const enabledStatus = data.enabled 
+                    ? '<span style="color: var(--success);">✓ Enabled</span>' 
+                    : '<span style="color: var(--warning);">✗ Disabled</span>';
+                
+                if (!hasState) {
+                    document.getElementById('stateContent').innerHTML = `
+                        ${configItem('Persistence', enabledStatus)}
+                        ${data.enabled ? configItem('State File', data.state_file) : ''}
+                        <div class="empty-state" style="margin-top: 12px;">
+                            <div class="icon">💾</div>
+                            <p>${data.enabled ? 'No persisted state yet' : 'Persistence disabled'}</p>
+                            <p style="font-size: 12px;">${data.enabled 
+                                ? 'Changes will be saved to state.toml' 
+                                : 'Enable in config.toml: enable_state_persistence = true'}</p>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('stateContent').innerHTML = `
+                        ${configItem('Persistence', enabledStatus)}
+                        ${configItem('State File', data.state_file)}
+                        <h4 style="color: var(--text-muted); font-size: 12px; margin: 16px 0 12px;">PERSISTED CONFIG</h4>
+                        <div class="json-view" style="max-height: 200px;">${formatJson(data.persisted_config)}</div>
+                    `;
+                }
+            } catch (e) {
+                document.getElementById('stateContent').innerHTML = `<div class="empty-state">Failed to load</div>`;
+            }
+        }
+        
+        // Fetch snapshot
+        async function fetchSnapshot() {
+            try {
+                const res = await fetch(`${API_BASE}/v1/discovery`);
+                const data = await res.json();
+                document.getElementById('snapshotJson').innerHTML = formatJson(data);
+            } catch (e) {
+                document.getElementById('snapshotJson').textContent = 'Failed to load snapshot';
+            }
+        }
+        
+        // Clear persisted state
+        async function clearState() {
+            if (!confirm('Clear all persisted state? Server will use config.toml defaults on next restart.')) {
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE}/v1/state`, { method: 'DELETE' });
+                const data = await res.json();
+                showToast(data.message, 'success');
+                fetchState();
+            } catch (e) {
+                showToast('Failed to clear state', 'error');
+            }
+        }
+        
+        // Format bytes
+        function formatBytes(bytes) {
+            if (bytes < 1024) return `${bytes} B`;
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+            return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+        }
+        
+        // Refresh all data
+        async function refreshAll() {
+            document.getElementById('statusText').textContent = 'Refreshing...';
+            
+            try {
+                await Promise.all([
+                    fetchListeners(),
+                    fetchHttp(),
+                    fetchPerformance(),
+                    fetchLogging(),
+                    fetchRoutes(),
+                    fetchVhosts(),
+                    fetchState(),
+                    fetchSnapshot()
+                ]);
+                
+                document.getElementById('statusDot').classList.remove('offline');
+                document.getElementById('statusText').textContent = 'Connected';
+                document.getElementById('refreshTime').textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
+            } catch (e) {
+                document.getElementById('statusDot').classList.add('offline');
+                document.getElementById('statusText').textContent = 'Disconnected';
+            }
+        }
+        
+        // Initial load
+        refreshAll();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(refreshAll, 30000);
+    </script>
+</body>
+</html>

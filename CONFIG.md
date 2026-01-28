@@ -23,6 +23,7 @@ SERVER_HTTP__ENABLE_CORS=true cargo run
 - `server.api_host` - API server bind address (default: "0.0.0.0")
 - `server.api_port` - API management port (default: 8000)
 - `server.workers` - Worker thread count (optional, defaults to CPU cores)
+- `server.enable_state_persistence` - Enable config persistence to state.toml (default: false)
 
 ### Logging Configuration
 - `logging.level` - Log verbosity: "debug", "info", "error" (default: "info")
@@ -49,7 +50,6 @@ SERVER_HTTP__ENABLE_CORS=true cargo run
 - `http.max_body_size` - Max request body size in bytes (default: 10485760)
 
 ### Routes Configuration
-- `routes.favicon_paths` - Favicon URL paths (default: ["/favicon.ico", "/favicon.svg"])
 - `routes.index_files` - Default document filenames (default: ["index.html", "index.htm"])
 - `routes.custom_routes` - Custom route definitions (see [ROUTES.md](ROUTES.md))
 

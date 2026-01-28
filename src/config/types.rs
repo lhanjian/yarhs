@@ -13,6 +13,9 @@ pub struct Config {
     pub performance: PerformanceConfig,
     pub http: HttpConfig,
     pub routes: RoutesConfig,
+    /// Virtual hosts configuration (optional, xDS-compatible)
+    #[serde(default)]
+    pub virtual_hosts: Vec<VirtualHost>,
 }
 
 /// Dynamic configuration - can be modified at runtime
@@ -39,7 +42,6 @@ pub struct DynamicPerformanceConfig {
 /// Routes configuration
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RoutesConfig {
-    pub favicon_paths: Vec<String>,
     pub index_files: Vec<String>,
     pub custom_routes: HashMap<String, RouteHandler>,
     /// Health check configuration
@@ -98,7 +100,6 @@ pub enum RouteHandler {
 impl Default for RoutesConfig {
     fn default() -> Self {
         Self {
-            favicon_paths: vec!["/favicon.ico".to_string(), "/favicon.svg".to_string()],
             index_files: vec!["index.html".to_string(), "index.htm".to_string()],
             custom_routes: HashMap::new(),
             health: HealthConfig::default(),
@@ -123,6 +124,9 @@ pub struct ServerConfig {
     pub api_host: String,
     pub api_port: u16,
     pub workers: Option<usize>,
+    /// Enable state persistence to state.toml (default: false)
+    #[serde(default)]
+    pub enable_state_persistence: bool,
 }
 
 /// Logging configuration

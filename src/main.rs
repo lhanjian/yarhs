@@ -72,21 +72,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = runtime_builder.build()?;
 
-    runtime.block_on(async_main(cfg))
+    runtime.block_on(async_main(cfg, config_path))
 }
 
 // Allow `future_not_send`: This function uses `LocalSet::run_until()` which doesn't
 // require Send futures. Clippy warns because the Future holds non-Send types across
 // await points, but since we run via `block_on()` (not `spawn()`), Send is not required.
 #[allow(clippy::similar_names, clippy::future_not_send)]
-async fn async_main(cfg: config::Config) -> Result<(), Box<dyn std::error::Error>> {
+async fn async_main(cfg: config::Config, config_path: String) -> Result<(), Box<dyn std::error::Error>> {
     let app_addr = cfg.get_socket_addr()?;
     let api_addr = cfg.get_api_socket_addr()?;
 
     let app_listener = server::create_reusable_listener(app_addr)?;
     let api_listener = server::create_reusable_listener(api_addr)?;
 
-    let state = Arc::new(config::AppState::new(&cfg));
+    // Create state manager for persistence (state.toml alongside config.toml)
+    // Only enabled if config.server.enable_state_persistence is true
+    let state_manager = config::create_state_manager(&config_path, cfg.server.enable_state_persistence);
+    let state = Arc::new(config::AppState::new(&cfg, state_manager).await);
     let app_connections = Arc::new(AtomicUsize::new(0));
     let api_connections = Arc::new(AtomicUsize::new(0));
 
@@ -112,8 +115,12 @@ async fn async_main(cfg: config::Config) -> Result<(), Box<dyn std::error::Error
     );
     println!("  - Max body size: {} bytes", cfg.http.max_body_size);
     println!(
-        "  - Max connections: {:?}\n",
+        "  - Max connections: {:?}",
         cfg.performance.max_connections
+    );
+    println!(
+        "  - State persistence: {}\n",
+        if cfg.server.enable_state_persistence { "enabled" } else { "disabled" }
     );
 
     // Use LocalSet for spawn_local support

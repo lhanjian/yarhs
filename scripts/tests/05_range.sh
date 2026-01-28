@@ -34,6 +34,14 @@ else
     log_fail "Range Content-Length incorrect (expected: 10, got: $RANGE_LENGTH)"
 fi
 
+# Verify actual content returned by range request
+RANGE_CONTENT=$(curl -s -H "Range: bytes=0-4" "$BASE_URL/static/test.txt")
+if [ "$RANGE_CONTENT" = "Hello" ]; then
+    log_pass "Range request returns correct content: Hello"
+else
+    log_fail "Range request content incorrect (expected: Hello, got: $RANGE_CONTENT)"
+fi
+
 # 416 Range Not Satisfiable (exceeds file size)
 assert_status "Invalid range returns 416 (bytes=99999-)" "$BASE_URL/static/test.txt" "416" "Range: bytes=99999-"
 

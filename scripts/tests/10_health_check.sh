@@ -46,7 +46,6 @@ CUSTOM_RESPONSE=$(curl -s -X POST "$API_URL/v1/discovery:routes" \
     -H "Content-Type: application/json" \
     -d '{
         "resources": [{
-            "favicon_paths": ["/favicon.ico"],
             "index_files": ["index.html"],
             "custom_routes": {
                 "/static": {"type": "dir", "path": "static"}
@@ -80,7 +79,6 @@ curl -s -X POST "$API_URL/v1/discovery:routes" \
     -H "Content-Type: application/json" \
     -d '{
         "resources": [{
-            "favicon_paths": ["/favicon.ico", "/favicon.svg"],
             "index_files": ["index.html", "index.htm"],
             "custom_routes": {
                 "/static": {"type": "dir", "path": "static"},

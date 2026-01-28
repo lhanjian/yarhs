@@ -6,19 +6,6 @@ use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::Response;
 
-/// Build 304 Not Modified response
-pub fn build_304_response(etag: &str) -> Response<Full<Bytes>> {
-    Response::builder()
-        .status(304)
-        .header("ETag", etag)
-        .header("Cache-Control", "public, max-age=3600")
-        .body(Full::new(Bytes::new()))
-        .unwrap_or_else(|e| {
-            log_build_error("304", &e);
-            Response::new(Full::new(Bytes::new()))
-        })
-}
-
 /// Build 304 Not Modified response with Last-Modified
 pub fn build_304_response_with_mtime(etag: &str, last_modified: &str) -> Response<Full<Bytes>> {
     Response::builder()

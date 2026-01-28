@@ -60,6 +60,11 @@ pub async fn update_listener(
             config.server.clone()
         };
 
+        // Persist server config change
+        if let Err(e) = state.state_manager.update_server(&new_config).await {
+            crate::logger::write_error(&format!("Failed to persist server config: {e}"));
+        }
+
         {
             let mut cfg = state.new_server_config.write().await;
             *cfg = Some(new_config.clone());
@@ -102,7 +107,12 @@ pub async fn update_route(
 
     {
         let mut config = state.dynamic_config.write().await;
-        config.routes = Arc::new(routes);
+        config.routes = Arc::new(routes.clone());
+    }
+
+    // Persist routes config change
+    if let Err(e) = state.state_manager.update_routes(&routes).await {
+        crate::logger::write_error(&format!("Failed to persist routes config: {e}"));
     }
 
     Ok("Routes updated".to_string())
@@ -118,7 +128,12 @@ pub async fn update_http(
 
     {
         let mut config = state.dynamic_config.write().await;
-        config.http = Arc::new(http);
+        config.http = Arc::new(http.clone());
+    }
+
+    // Persist HTTP config change
+    if let Err(e) = state.state_manager.update_http(&http).await {
+        crate::logger::write_error(&format!("Failed to persist HTTP config: {e}"));
     }
 
     Ok("HTTP config updated".to_string())
@@ -155,6 +170,11 @@ pub async fn update_logging(
     // Update cache
     state.update_cache(&*state.dynamic_config.read().await);
 
+    // Persist logging config change
+    if let Err(e) = state.state_manager.update_logging(&logging).await {
+        crate::logger::write_error(&format!("Failed to persist logging config: {e}"));
+    }
+
     Ok("Logging config updated".to_string())
 }
 
@@ -168,7 +188,12 @@ pub async fn update_performance(
 
     {
         let mut config = state.dynamic_config.write().await;
-        config.performance = performance;
+        config.performance = performance.clone();
+    }
+
+    // Persist performance config change
+    if let Err(e) = state.state_manager.update_performance(&performance).await {
+        crate::logger::write_error(&format!("Failed to persist performance config: {e}"));
     }
 
     Ok("Performance config updated".to_string())
@@ -206,7 +231,12 @@ pub async fn update_virtual_hosts(
 
     {
         let mut config = state.dynamic_config.write().await;
-        config.virtual_hosts = Arc::new(virtual_hosts);
+        config.virtual_hosts = Arc::new(virtual_hosts.clone());
+    }
+
+    // Persist virtual hosts config change
+    if let Err(e) = state.state_manager.update_virtual_hosts(&virtual_hosts).await {
+        crate::logger::write_error(&format!("Failed to persist virtual_hosts config: {e}"));
     }
 
     Ok(format!("VirtualHosts updated: {count} host(s) configured"))

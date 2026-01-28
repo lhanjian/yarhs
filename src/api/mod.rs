@@ -1,6 +1,7 @@
 // API module entry
 // xDS-style configuration management API
 
+mod dashboard;
 mod handlers;
 mod response;
 mod types;
@@ -30,6 +31,8 @@ pub async fn handle_api_config(
 
     // xDS style routes
     match (method, path) {
+        // Dashboard - Web UI
+        (Method::GET, "/" | "/dashboard") => Ok(dashboard::serve_dashboard()),
         // Get all resources snapshot
         (Method::GET, "/v1/discovery") => handlers::handle_snapshot(state).await,
         // Discover specific resource type (Listener)
@@ -74,6 +77,9 @@ pub async fn handle_api_config(
         (Method::POST, "/v1/discovery:vhosts") => {
             handlers::handle_discovery_post(req, state, ResourceType::VirtualHost).await
         }
+        // State persistence management
+        (Method::GET, "/v1/state") => handlers::handle_state_get(state).await,
+        (Method::DELETE, "/v1/state") => handlers::handle_state_clear(state).await,
         // Unknown route
         _ => {
             logger::log_api_request(req.method().as_str(), path, 404);

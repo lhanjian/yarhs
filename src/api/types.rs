@@ -63,6 +63,22 @@ pub struct VersionedValue<T> {
 pub struct ListenerResource {
     pub main_server: ServerEndpoint,
     pub api_server: ServerEndpoint,
+    /// Number of worker threads (read-only, set at startup). None means auto-detect.
+    #[serde(serialize_with = "serialize_workers")]
+    pub workers: Option<usize>,
+}
+
+/// Serialize workers field - None becomes "auto"
+/// Note: serde's `serialize_with` requires `&Option<T>` signature, cannot change to `Option<&T>`
+#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+fn serialize_workers<S>(workers: &Option<usize>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match workers {
+        Some(n) => serializer.serialize_str(&n.to_string()),
+        None => serializer.serialize_str("auto"),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -73,7 +89,6 @@ pub struct ServerEndpoint {
 
 #[derive(Debug, Serialize)]
 pub struct RouteResource {
-    pub favicon_paths: Vec<String>,
     pub index_files: Vec<String>,
     pub custom_routes: HashMap<String, RouteHandler>,
     pub health: HealthConfig,

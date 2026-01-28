@@ -23,7 +23,6 @@ enable_cors = true  # WASM may require CORS
 max_body_size = 10485760
 
 [routes]
-favicon_paths = ["/favicon.ico", "/favicon.svg"]
 index_files = ["index.html", "index.htm"]
 
 [routes.custom_routes]

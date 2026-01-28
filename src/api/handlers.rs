@@ -51,13 +51,13 @@ pub async fn handle_snapshot(state: Arc<AppState>) -> Result<Response<Full<Bytes
                         host: dynamic_config.server.api_host.clone(),
                         port: dynamic_config.server.api_port,
                     },
+                    workers: state.config.server.workers,
                 },
             },
             route: VersionedValue {
                 version_info: route_ver.to_string(),
                 nonce: route_nonce.to_string(),
                 value: RouteResource {
-                    favicon_paths: dynamic_config.routes.favicon_paths.clone(),
                     index_files: dynamic_config.routes.index_files.clone(),
                     custom_routes: dynamic_config.routes.custom_routes.clone(),
                     health: dynamic_config.routes.health.clone(),
@@ -108,6 +108,10 @@ pub async fn handle_discovery_get(
         let dynamic_config = state.dynamic_config.read().await;
         match resource_type {
             ResourceType::Listener => {
+                let workers_value = match state.config.server.workers {
+                    Some(n) => serde_json::json!(n.to_string()),
+                    None => serde_json::json!("auto"),
+                };
                 vec![Resource {
                     type_url: type_url.clone(),
                     name: "main".to_string(),
@@ -119,7 +123,8 @@ pub async fn handle_discovery_get(
                         "api_server": {
                             "host": dynamic_config.server.api_host,
                             "port": dynamic_config.server.api_port
-                        }
+                        },
+                        "workers": workers_value
                     }),
                 }]
             }
@@ -128,7 +133,6 @@ pub async fn handle_discovery_get(
                     type_url: type_url.clone(),
                     name: "default".to_string(),
                     value: serde_json::json!({
-                        "favicon_paths": &dynamic_config.routes.favicon_paths,
                         "index_files": &dynamic_config.routes.index_files,
                         "custom_routes": &dynamic_config.routes.custom_routes
                     }),
@@ -294,4 +298,44 @@ pub async fn handle_discovery_post(
             json_response(StatusCode::BAD_REQUEST, &response)
         }
     }
+}
+
+/// DELETE method to clear persisted state
+/// Resets to config.toml defaults on next restart
+pub async fn handle_state_clear(state: Arc<AppState>) -> Result<Response<Full<Bytes>>, Infallible> {
+    match state.state_manager.clear().await {
+        Ok(()) => {
+            logger::log_api_request("DELETE", "/v1/state", 200);
+            let response = serde_json::json!({
+                "status": "OK",
+                "message": "Persisted state cleared. Restart server to apply config.toml defaults."
+            });
+            json_response(StatusCode::OK, &response)
+        }
+        Err(e) => {
+            logger::log_api_request("DELETE", "/v1/state", 500);
+            let response = serde_json::json!({
+                "status": "ERROR",
+                "message": e
+            });
+            json_response(StatusCode::INTERNAL_SERVER_ERROR, &response)
+        }
+    }
+}
+
+/// GET method to view persisted state
+pub async fn handle_state_get(state: Arc<AppState>) -> Result<Response<Full<Bytes>>, Infallible> {
+    let persisted = state.state_manager.get_state().await;
+    let state_path = state.state_manager.state_path().display().to_string();
+    let enabled = state.state_manager.is_enabled();
+
+    logger::log_api_request("GET", "/v1/state", 200);
+
+    let response = serde_json::json!({
+        "enabled": enabled,
+        "state_file": state_path,
+        "persisted_config": persisted
+    });
+
+    json_response(StatusCode::OK, &response)
 }

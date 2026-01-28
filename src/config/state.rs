@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Notify, RwLock};
 
+use super::persist::SharedStateManager;
 use super::types::{Config, DynamicConfig, DynamicServerConfig};
 use super::version::XdsVersionManager;
 
@@ -21,11 +22,21 @@ pub struct AppState {
 
     // xDS version management
     pub xds_versions: XdsVersionManager,
+
+    // State persistence manager
+    pub state_manager: SharedStateManager,
 }
 
 impl AppState {
-    pub fn new(config: &Config) -> Self {
-        let dynamic = config.to_dynamic();
+    /// Create `AppState` with persisted state applied
+    /// This loads state.toml and merges it with config.toml
+    pub async fn new(config: &Config, state_manager: SharedStateManager) -> Self {
+        // Get persisted state and merge with base config
+        let persisted_state = state_manager.get_state().await;
+        let dynamic = config.to_dynamic_with_state(&persisted_state);
+        
+        // Update cached values based on merged config
+        let cached_access_log = Arc::new(AtomicBool::new(dynamic.logging.access_log));
 
         Self {
             config: config.clone(),
@@ -33,8 +44,9 @@ impl AppState {
             restart_signal: Arc::new(Notify::new()),
             new_server_config: Arc::new(RwLock::new(None)),
             api_restart_signal: Arc::new(Notify::new()),
-            cached_access_log: Arc::new(AtomicBool::new(config.logging.access_log)),
+            cached_access_log,
             xds_versions: XdsVersionManager::new(),
+            state_manager,
         }
     }
 

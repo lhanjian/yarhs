@@ -25,7 +25,7 @@ pub fn init(config: &Config) -> std::io::Result<()> {
 }
 
 /// Write to info/access log
-fn write_info(message: &str) {
+pub fn write_info(message: &str) {
     if writer::is_initialized() {
         writer::get().write_info(message);
     } else {
@@ -34,7 +34,7 @@ fn write_info(message: &str) {
 }
 
 /// Write to error log
-fn write_error(message: &str) {
+pub fn write_error(message: &str) {
     if writer::is_initialized() {
         writer::get().write_error(message);
     } else {

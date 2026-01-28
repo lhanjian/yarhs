@@ -239,9 +239,6 @@ yarhs/
 
 **config.toml:**
 ```toml
-[routes]
-favicon_paths = ["/favicon.ico", "/favicon.svg"]
-
 [routes.custom_routes]
 "/about" = { type = "file", path = "templates/about.html" }
 "/static" = { type = "dir", path = "static" }
@@ -273,7 +270,6 @@ curl -X POST http://localhost:8000/v1/discovery:routes \
   -H "Content-Type: application/json" \
   -d '{
     "resources": [{
-      "favicon_paths": ["/favicon.ico"],
       "index_files": ["index.html"],
       "custom_routes": {
         "/about": {"type": "file", "path": "templates/about.html"}

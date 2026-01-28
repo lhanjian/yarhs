@@ -285,17 +285,12 @@ async fn route_request(
         }
     }
 
-    // 1. Favicon routes
-    if routes.favicon_paths.iter().any(|p| ctx.path == p) {
-        return static_files::serve_favicon(ctx).await;
-    }
-
-    // 2. Custom routes (exact match)
+    // 1. Custom routes (exact match)
     if let Some(handler) = routes.custom_routes.get(ctx.path) {
         return dispatch_route_handler(ctx, handler, ctx.path, &routes.index_files).await;
     }
 
-    // 3. Custom routes (prefix match)
+    // 2. Custom routes (prefix match)
     if let Some((prefix, handler)) = routes
         .custom_routes
         .iter()
@@ -304,7 +299,7 @@ async fn route_request(
         return dispatch_route_handler(ctx, handler, prefix, &routes.index_files).await;
     }
 
-    // 4. Default: homepage
+    // 3. Default: homepage
     serve_default_homepage(ctx, state).await
 }
 

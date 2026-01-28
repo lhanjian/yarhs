@@ -10,7 +10,6 @@ This server supports dynamic routing configuration, allowing you to modify routi
 
 ```toml
 [routes]
-favicon_paths = ["/favicon.ico", "/favicon.svg"]  # Favicon path list
 index_files = ["index.html", "index.htm"]         # Default document list
 ```
 
@@ -105,10 +104,9 @@ Redirects requests to another URL:
 
 Route matching follows this priority order:
 
-1. **Favicon Routes** - Exact paths in `favicon_paths` list
-2. **Custom Routes (Exact Match)** - file/redirect types in `custom_routes`
-3. **Custom Routes (Prefix Match)** - dir type in `custom_routes`
-4. **Default Route** - Returns default homepage
+1. **Custom Routes (Exact Match)** - file/redirect types in `custom_routes`
+2. **Custom Routes (Prefix Match)** - dir type in `custom_routes`
+3. **Default Route** - Returns default homepage
 
 ## ETag and Conditional Requests
 
@@ -171,7 +169,6 @@ Update routes via xDS-style endpoint:
 curl -X POST http://localhost:8000/v1/discovery:routes \
   -H "Content-Type: application/json" \
   -d '{"resources": [{
-    "favicon_paths": ["/favicon.ico", "/favicon.svg"],
     "index_files": ["index.html"],
     "custom_routes": {
       "/about": {"type": "file", "path": "templates/about.html"},

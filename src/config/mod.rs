@@ -1,6 +1,7 @@
 // Configuration module entry point
 // Manages application configuration, runtime state, and version control
 
+mod persist;
 mod state;
 mod types;
 mod version;
@@ -15,6 +16,7 @@ pub use types::{
     HealthConfig, HttpConfig, LoggingConfig, Route, RouteAction, RouteHandler, RouteMatch,
     RoutesConfig, VirtualHost,
 };
+pub use persist::{create_state_manager, PersistentState};
 pub use version::ResourceType;
 
 impl Config {
@@ -28,6 +30,7 @@ impl Config {
             .set_default("server.port", 8080)?
             .set_default("server.api_host", "127.0.0.1")?
             .set_default("server.api_port", 8000)?
+            .set_default("server.enable_state_persistence", false)?
             .set_default("logging.level", "info")?
             .set_default("logging.access_log", true)?
             .set_default("logging.show_headers", false)?
@@ -73,8 +76,36 @@ impl Config {
                 write_timeout: self.performance.write_timeout,
                 max_connections: self.performance.max_connections,
             },
-            // Initialize with empty virtual hosts (will use legacy routes)
-            virtual_hosts: Arc::new(Vec::new()),
+            // Load virtual hosts from config (empty if not configured)
+            virtual_hosts: Arc::new(self.virtual_hosts.clone()),
         }
+    }
+
+    /// Convert to `DynamicConfig` with state overlay
+    /// Applies persisted state on top of base configuration
+    pub fn to_dynamic_with_state(&self, state: &PersistentState) -> DynamicConfig {
+        let mut dynamic = self.to_dynamic();
+
+        // Apply persisted state overrides
+        if let Some(server) = &state.server {
+            dynamic.server = server.clone();
+        }
+        if let Some(logging) = &state.logging {
+            dynamic.logging = logging.clone();
+        }
+        if let Some(http) = &state.http {
+            dynamic.http = Arc::new(http.clone());
+        }
+        if let Some(performance) = &state.performance {
+            dynamic.performance = performance.clone();
+        }
+        if let Some(routes) = &state.routes {
+            dynamic.routes = Arc::new(routes.clone().into());
+        }
+        if !state.virtual_hosts.is_empty() {
+            dynamic.virtual_hosts = Arc::new(state.virtual_hosts.clone());
+        }
+
+        dynamic
     }
 }

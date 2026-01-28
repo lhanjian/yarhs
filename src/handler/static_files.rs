@@ -13,16 +13,6 @@ use std::path::Path;
 use std::time::SystemTime;
 use tokio::fs;
 
-const FAVICON_PATH: &str = "static/favicon.svg";
-
-/// Serve favicon
-pub async fn serve_favicon(ctx: &RequestContext<'_>) -> Response<Full<Bytes>> {
-    match load_favicon().await {
-        Some(data) => build_favicon_response(&data, ctx.if_none_match.as_deref(), ctx.is_head),
-        None => http::build_404_response(),
-    }
-}
-
 /// Serve static files from a directory
 ///
 /// Implements the "mtime-first" optimization:
@@ -215,11 +205,6 @@ fn mtime_to_etag(mtime: SystemTime) -> String {
     format!("{:x}", duration.as_secs())
 }
 
-/// Load favicon
-pub async fn load_favicon() -> Option<Vec<u8>> {
-    fs::read(FAVICON_PATH).await.ok()
-}
-
 /// Get default homepage HTML
 #[allow(clippy::too_many_lines)]
 pub fn get_default_homepage() -> String {
@@ -331,37 +316,6 @@ pub fn get_default_homepage() -> String {
 </body>
 </html>"#,
     )
-}
-
-/// Build favicon response
-fn build_favicon_response(
-    data: &[u8],
-    if_none_match: Option<&str>,
-    is_head: bool,
-) -> Response<Full<Bytes>> {
-    let etag = cache::generate_etag(data);
-
-    if cache::check_etag_match(if_none_match, &etag) {
-        return http::build_304_response(&etag);
-    }
-
-    let body = if is_head {
-        Bytes::new()
-    } else {
-        Bytes::from(data.to_owned())
-    };
-
-    Response::builder()
-        .status(200)
-        .header("Content-Type", "image/svg+xml")
-        .header("Content-Length", data.len())
-        .header("ETag", etag)
-        .header("Cache-Control", "public, max-age=86400")
-        .body(Full::new(body))
-        .unwrap_or_else(|e| {
-            logger::log_error(&format!("Failed to build favicon response: {e}"));
-            Response::new(Full::new(Bytes::new()))
-        })
 }
 
 /// Build static file response with `Last-Modified` support (optimized path)

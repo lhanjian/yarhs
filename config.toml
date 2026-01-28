@@ -23,7 +23,6 @@ enable_cors = false
 max_body_size = 10485760  # 10MB (HTTP request body size limit)
 
 [routes]
-favicon_paths = ["/favicon.ico", "/favicon.svg"]
 index_files = ["index.html", "index.htm"]  # Default documents
 
 # Static directory mapping (unified configuration)
@@ -35,3 +34,48 @@ index_files = ["index.html", "index.htm"]  # Default documents
 # More route examples (optional)
 # "/old-path" = { type = "redirect", target = "/new-path" }
 # "/uploads" = { type = "static", dir = "user_uploads" }
+
+# ============================================
+# Virtual Hosts Configuration (xDS-compatible)
+# ============================================
+# When virtual_hosts is configured, requests are routed based on Host header.
+# If empty or not configured, falls back to [routes] above.
+#
+# Example configuration:
+# [[virtual_hosts]]
+# name = "api-site"
+# domains = ["api.example.com", "api.localhost"]
+# 
+# [[virtual_hosts.routes]]
+# name = "api-root"
+# match = { prefix = "/" }
+# type = "dir"
+# path = "/var/www/api"
+# 
+# [[virtual_hosts]]
+# name = "www-site"
+# domains = ["www.example.com", "*.example.com"]
+# index_files = ["index.html", "home.html"]
+# 
+# [[virtual_hosts.routes]]
+# name = "static-assets"
+# match = { prefix = "/assets" }
+# type = "dir"
+# path = "static"
+# 
+# [[virtual_hosts.routes]]
+# name = "www-root"
+# match = { prefix = "/" }
+# type = "dir"
+# path = "/var/www/html"
+#
+# [[virtual_hosts]]
+# name = "catch-all"
+# domains = ["*"]
+# 
+# [[virtual_hosts.routes]]
+# name = "default"
+# match = { prefix = "/" }
+# type = "direct"
+# status = 404
+# body = "Unknown host"

@@ -19,7 +19,6 @@ curl -s "$API_URL/v1/discovery:routes" > /tmp/config.json
 
 jq '{
   resources: [{
-    favicon_paths: .resources[0].favicon_paths,
     index_files: .resources[0].index_files,
     custom_routes: ((.resources[0].custom_routes // {}) + {
       "/contact": {type: "file", path: "templates/contact.html"},

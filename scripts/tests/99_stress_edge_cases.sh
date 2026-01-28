@@ -24,7 +24,7 @@ mkdir -p "$STRESS_DIR"
 log_info "=== Part 1: VirtualHost Edge Cases ==="
 
 # Test 1.1: 空域名列表（应该被拒绝）
-RESPONSE=$(curl -s -X POST "$API_URL/v1/discovery:vhosts" \
+RESPONSE=$(curl -s --max-time 10 -X POST "$API_URL/v1/discovery:vhosts" \
     -H "Content-Type: application/json" \
     -d '{
         "resources": [{
@@ -43,7 +43,7 @@ else
 fi
 
 # Test 1.2: 空名称（应该被拒绝）
-RESPONSE=$(curl -s -X POST "$API_URL/v1/discovery:vhosts" \
+RESPONSE=$(curl -s --max-time 10 -X POST "$API_URL/v1/discovery:vhosts" \
     -H "Content-Type: application/json" \
     -d '{
         "resources": [{
@@ -76,17 +76,17 @@ for i in $(seq 1 100); do
 done
 VHOSTS_JSON+="]"
 
-RESPONSE=$(curl -s -X POST "$API_URL/v1/discovery:vhosts" \
+RESPONSE=$(curl -s --max-time 30 -X POST "$API_URL/v1/discovery:vhosts" \
     -H "Content-Type: application/json" \
     -d "{\"resources\": [{\"virtual_hosts\": $VHOSTS_JSON}]}")
 assert_json_field "Configure 100 virtual hosts" "$RESPONSE" ".status" "ACK"
 
 # Test 1.4: 验证第50个虚拟主机能正常工作
-SITE50_RESPONSE=$(curl -s -H "Host: site-50.local" "$BASE_URL/index.html")
+SITE50_RESPONSE=$(curl -s --max-time 10 -H "Host: site-50.local" "$BASE_URL/index.html")
 assert_contains "Route to site-50" "$SITE50_RESPONSE" "Site 50 Content"
 
 # Test 1.5: 验证第100个虚拟主机能正常工作
-SITE100_RESPONSE=$(curl -s -H "Host: site-100.local" "$BASE_URL/index.html")
+SITE100_RESPONSE=$(curl -s --max-time 10 -H "Host: site-100.local" "$BASE_URL/index.html")
 assert_contains "Route to site-100" "$SITE100_RESPONSE" "Site 100 Content"
 
 # ============================================================
@@ -95,7 +95,7 @@ assert_contains "Route to site-100" "$SITE100_RESPONSE" "Site 100 Content"
 log_info "=== Part 2: Complex Route Matching ==="
 
 # 先清空之前的配置
-curl -s -X POST "$API_URL/v1/discovery:vhosts" \
+curl -s --max-time 10 -X POST "$API_URL/v1/discovery:vhosts" \
     -H "Content-Type: application/json" \
     -d '{"resources": [{"virtual_hosts": []}]}' > /dev/null
 
@@ -170,21 +170,21 @@ COMPLEX_CONFIG='{
     }]
 }'
 
-RESPONSE=$(curl -s -X POST "$API_URL/v1/discovery:vhosts" \
+RESPONSE=$(curl -s --max-time 10 -X POST "$API_URL/v1/discovery:vhosts" \
     -H "Content-Type: application/json" \
     -d "$COMPLEX_CONFIG")
 assert_json_field "Configure complex routes" "$RESPONSE" ".status" "ACK"
 
 # Test 2.1: API v1 路由
-API_V1=$(curl -s -H "Host: api.complex.local" "$BASE_URL/v1/info.json")
+API_V1=$(curl -s --max-time 10 -H "Host: api.complex.local" "$BASE_URL/v1/info.json")
 assert_contains "API v1 route" "$API_V1" '"version": "1.0"'
 
 # Test 2.2: API v2 路由
-API_V2=$(curl -s -H "Host: api.complex.local" "$BASE_URL/v2/info.json")
+API_V2=$(curl -s --max-time 10 -H "Host: api.complex.local" "$BASE_URL/v2/info.json")
 assert_contains "API v2 route" "$API_V2" '"version": "2.0"'
 
 # Test 2.3: 重定向到最新版本
-REDIRECT_STATUS=$(curl -sI -H "Host: api.complex.local" "$BASE_URL/latest" | grep "HTTP" | cut -d' ' -f2 | tr -d '\r')
+REDIRECT_STATUS=$(curl -sI --max-time 10 -H "Host: api.complex.local" "$BASE_URL/latest" | grep "HTTP" | cut -d' ' -f2 | tr -d '\r')
 if [ "$REDIRECT_STATUS" = "302" ]; then
     log_pass "Redirect to latest API (HTTP 302)"
 else
@@ -192,18 +192,18 @@ else
 fi
 
 # Test 2.4: API 默认 404 响应
-API_404=$(curl -s -H "Host: api.complex.local" "$BASE_URL/unknown")
+API_404=$(curl -s --max-time 10 -H "Host: api.complex.local" "$BASE_URL/unknown")
 assert_contains "API custom 404" "$API_404" '"error": "Not Found"'
 
 # Test 2.5: 通配符域名匹配
-WILDCARD=$(curl -s -H "Host: sub.wildcard.local" "$BASE_URL/page.html")
+WILDCARD=$(curl -s --max-time 10 -H "Host: sub.wildcard.local" "$BASE_URL/page.html")
 assert_contains "Wildcard domain match" "$WILDCARD" "Static Content"
 
-WILDCARD2=$(curl -s -H "Host: another.wildcard.local" "$BASE_URL/page.html")
+WILDCARD2=$(curl -s --max-time 10 -H "Host: another.wildcard.local" "$BASE_URL/page.html")
 assert_contains "Wildcard domain match 2" "$WILDCARD2" "Static Content"
 
 # Test 2.6: Catch-all 处理未知域名
-CATCHALL=$(curl -s -H "Host: unknown.domain.local" "$BASE_URL/")
+CATCHALL=$(curl -s --max-time 10 -H "Host: unknown.domain.local" "$BASE_URL/")
 assert_contains "Catch-all for unknown domain" "$CATCHALL" "Misdirected Request"
 
 # ============================================================
@@ -212,25 +212,33 @@ assert_contains "Catch-all for unknown domain" "$CATCHALL" "Misdirected Request"
 log_info "=== Part 3: Version Conflict (Optimistic Locking) ==="
 
 # 获取当前版本
-CURRENT=$(curl -s "$API_URL/v1/discovery:vhosts")
+CURRENT=$(curl -s --max-time 10 "$API_URL/v1/discovery:vhosts")
 CURRENT_VERSION=$(echo "$CURRENT" | jq -r '.version_info')
 log_info "Current vhosts version: $CURRENT_VERSION"
 
 # Test 3.1: 使用正确版本更新
-RESPONSE=$(curl -s -X POST "$API_URL/v1/discovery:vhosts" \
+RESPONSE=$(curl -s --max-time 10 -X POST "$API_URL/v1/discovery:vhosts" \
     -H "Content-Type: application/json" \
     -d "{
         \"version_info\": \"$CURRENT_VERSION\",
-        \"resources\": [{\"virtual_hosts\": []}]
+        \"resources\": [{\"virtual_hosts\": [{
+            \"name\": \"version-test\",
+            \"domains\": [\"version.local\"],
+            \"routes\": [{\"name\": \"r\", \"match\": {\"prefix\": \"/\"}, \"type\": \"direct\", \"status\": 200, \"body\": \"Version Test OK\"}]
+        }]}]
     }")
 assert_json_field "Update with correct version" "$RESPONSE" ".status" "ACK"
+
+# 验证更新后的配置实际生效
+VERSION_TEST=$(curl -s --max-time 10 -H "Host: version.local" "$BASE_URL/")
+assert_contains "Version update applied" "$VERSION_TEST" "Version Test OK"
 
 # 获取新版本
 NEW_VERSION=$(echo "$RESPONSE" | jq -r '.version_info')
 log_info "New vhosts version: $NEW_VERSION"
 
 # Test 3.2: 使用旧版本更新（应该冲突）
-CONFLICT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$API_URL/v1/discovery:vhosts" \
+CONFLICT_RESPONSE=$(curl -s --max-time 10 -w "\n%{http_code}" -X POST "$API_URL/v1/discovery:vhosts" \
     -H "Content-Type: application/json" \
     -d "{
         \"version_info\": \"$CURRENT_VERSION\",
@@ -273,25 +281,25 @@ CONFIG_B='{
 SWITCH_ERRORS=0
 for i in $(seq 1 10); do
     # 切换到 A
-    RESP_A=$(curl -s -X POST "$API_URL/v1/discovery:vhosts" -H "Content-Type: application/json" -d "$CONFIG_A")
+    RESP_A=$(curl -s --max-time 10 -X POST "$API_URL/v1/discovery:vhosts" -H "Content-Type: application/json" -d "$CONFIG_A")
     if [ "$(echo "$RESP_A" | jq -r '.status')" != "ACK" ]; then
         SWITCH_ERRORS=$((SWITCH_ERRORS + 1))
     fi
     
     # 验证 A
-    CONTENT=$(curl -s -H "Host: test.local" "$BASE_URL/")
+    CONTENT=$(curl -s --max-time 10 -H "Host: test.local" "$BASE_URL/")
     if ! echo "$CONTENT" | grep -q "Config A"; then
         SWITCH_ERRORS=$((SWITCH_ERRORS + 1))
     fi
     
     # 切换到 B
-    RESP_B=$(curl -s -X POST "$API_URL/v1/discovery:vhosts" -H "Content-Type: application/json" -d "$CONFIG_B")
+    RESP_B=$(curl -s --max-time 10 -X POST "$API_URL/v1/discovery:vhosts" -H "Content-Type: application/json" -d "$CONFIG_B")
     if [ "$(echo "$RESP_B" | jq -r '.status')" != "ACK" ]; then
         SWITCH_ERRORS=$((SWITCH_ERRORS + 1))
     fi
     
     # 验证 B
-    CONTENT=$(curl -s -H "Host: test.local" "$BASE_URL/")
+    CONTENT=$(curl -s --max-time 10 -H "Host: test.local" "$BASE_URL/")
     if ! echo "$CONTENT" | grep -q "Config B"; then
         SWITCH_ERRORS=$((SWITCH_ERRORS + 1))
     fi
@@ -309,13 +317,13 @@ fi
 log_info "=== Part 5: Cleanup & State Recovery ==="
 
 # 清空虚拟主机配置
-CLEANUP=$(curl -s -X POST "$API_URL/v1/discovery:vhosts" \
+CLEANUP=$(curl -s --max-time 10 -X POST "$API_URL/v1/discovery:vhosts" \
     -H "Content-Type: application/json" \
     -d '{"resources": [{"virtual_hosts": []}]}')
 assert_json_field "Cleanup virtual hosts" "$CLEANUP" ".status" "ACK"
 
 # 验证回退到传统路由
-FALLBACK=$(curl -s "$BASE_URL/static/test.txt")
+FALLBACK=$(curl -s --max-time 10 "$BASE_URL/static/test.txt")
 assert_contains "Fallback to legacy routes after cleanup" "$FALLBACK" "Hello"
 
 # 清理临时文件
