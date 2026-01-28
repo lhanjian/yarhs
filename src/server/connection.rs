@@ -96,11 +96,13 @@ fn handle_connection(
     tokio::task::spawn_local(async move {
         let io = TokioIo::new(stream);
 
-        // Read performance configuration
+        // Read performance configuration (extract before move)
         let keep_alive_timeout = state.config.performance.keep_alive_timeout;
+        let read_timeout = state.config.performance.read_timeout;
+        let write_timeout = state.config.performance.write_timeout;
         let timeout_duration = std::time::Duration::from_secs(std::cmp::max(
-            state.config.performance.read_timeout,
-            state.config.performance.write_timeout,
+            read_timeout,
+            write_timeout,
         ));
 
         // Build HTTP/1 connection with keep-alive support
@@ -128,14 +130,13 @@ fn handle_connection(
         );
 
         // Apply timeout and handle result
+        let timeout_secs = timeout_duration.as_secs();
         match tokio::time::timeout(timeout_duration, conn).await {
             Ok(Ok(())) => {}
             Ok(Err(err)) => logger::log_connection_error(&err),
             Err(_) => {
                 logger::log_warning(&format!(
-                    "Connection timeout after {} seconds, api_server: {}",
-                    timeout_duration.as_secs(),
-                    is_api_server
+                    "Connection timeout after {timeout_secs}s (peer: {peer_addr}, api_server: {is_api_server}, keep_alive: {keep_alive_timeout}s, read_timeout: {read_timeout}s, write_timeout: {write_timeout}s)"
                 ));
             }
         }
